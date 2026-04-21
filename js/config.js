@@ -3,8 +3,8 @@
 // ====================================
 
 // ⚠️  CONFIGURE THESE VALUES before deploying
-const SUPABASE_URL     = 'https://SEU_PROJETO.supabase.co';
-const SUPABASE_ANON_KEY = 'SUA_ANON_KEY_AQUI';
+const SUPABASE_URL     = 'https://lvtjzsovikbnpuoodbck.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_kNGohkiC5jxny5rtlbUGhQ_DtLxJztV';
 
 // WhatsApp da empresa (formato: 55 + DDD + número, sem + nem espaços)
 const COMPANY_WHATSAPP = '971500000000';
