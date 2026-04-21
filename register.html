@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrasilDubai — Criar Conta</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="auth-page">
+
+  <button class="lang-toggle" onclick="toggleLang()">🇺🇸 EN</button>
+
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="logo-text">🇧🇷 BrasilDubai</div>
+      <div class="logo-sub">Portal do Cliente</div>
+    </div>
+
+    <h1 class="auth-title" data-i18n="register_title">Criar conta</h1>
+
+    <div id="errorMsg"   class="error-msg"></div>
+    <div id="successMsg" class="success-msg"></div>
+
+    <form id="registerForm" onsubmit="handleRegister(event)">
+      <div class="form-group">
+        <label data-i18n="full_name">Nome completo</label>
+        <input type="text" id="fullName" required
+               data-i18n-ph="full_name" placeholder="Seu nome completo" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label data-i18n="email">Email</label>
+        <input type="email" id="email" required
+               placeholder="seu@email.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label data-i18n="password">Senha</label>
+        <input type="password" id="password" required
+               placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label data-i18n="whatsapp_label">WhatsApp</label>
+        <input type="tel" id="whatsapp"
+               data-i18n-ph="whatsapp_ph" placeholder="+971 50 000 0000" autocomplete="tel">
+      </div>
+      <button type="submit" class="btn btn-primary" id="submitBtn">
+        <span data-i18n="register_link">Criar conta</span>
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      <span data-i18n="already_account">Já tem conta?</span>
+      <a href="index.html" data-i18n="login_link">Fazer login</a>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    (async () => {
+      applyTranslations();
+      const user = await getCurrentUser();
+      if (user) {
+        const profile = await getCurrentProfile();
+        if (profile) redirectToDashboard(profile.role);
+      }
+    })();
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const btn      = document.getElementById('submitBtn');
+      const errEl    = document.getElementById('errorMsg');
+      const succEl   = document.getElementById('successMsg');
+      const fullName = document.getElementById('fullName').value.trim();
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const whatsapp = document.getElementById('whatsapp').value.trim();
+
+      errEl.classList.remove('show');
+      succEl.classList.remove('show');
+
+      if (password.length < 6) {
+        errEl.textContent = currentLang === 'pt'
+          ? 'A senha deve ter pelo menos 6 caracteres.'
+          : 'Password must be at least 6 characters.';
+        errEl.classList.add('show');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = `<span>${t('registering')}</span>`;
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName, whatsapp } }
+      });
+
+      if (error) {
+        errEl.textContent = error.message;
+        errEl.classList.add('show');
+        btn.disabled = false;
+        btn.innerHTML = `<span data-i18n="register_link">${t('register_link')}</span>`;
+        return;
+      }
+
+      // If email confirmation is disabled, user is auto-logged in
+      if (data.session) {
+        const profile = await getCurrentProfile();
+        redirectToDashboard(profile?.role || 'client');
+      } else {
+        succEl.textContent = currentLang === 'pt'
+          ? '✅ Conta criada! Verifique seu email para confirmar o cadastro.'
+          : '✅ Account created! Check your email to confirm your registration.';
+        succEl.classList.add('show');
+        btn.disabled = false;
+        btn.innerHTML = `<span data-i18n="register_link">${t('register_link')}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>

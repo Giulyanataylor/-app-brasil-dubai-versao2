@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrasilDubai — Meu Portal</title>
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body class="app-layout">
+
+  <!-- Header -->
+  <header class="app-header">
+    <span class="header-logo">🇧🇷 BrasilDubai</span>
+    <div class="header-actions">
+      <span class="header-user" id="headerUser">…</span>
+      <button class="lang-btn-header" onclick="toggleLang()">🇺🇸 EN</button>
+      <button class="btn-logout" onclick="logout()" data-i18n="logout">Sair</button>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="app-content">
+    <div class="page-header">
+      <h1 class="page-title" data-i18n="my_process">Meu Processo</h1>
+      <p class="page-subtitle" id="serviceLabel"></p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('checklist')" data-i18n="checklist">Checklist</button>
+      <button class="tab-btn" onclick="switchTab('invoice')"   data-i18n="invoice">Fatura</button>
+      <button class="tab-btn" onclick="switchTab('services')"  data-i18n="services">Serviços</button>
+      <button class="tab-btn" onclick="switchTab('documents')" data-i18n="documents">Documentos</button>
+    </div>
+
+    <!-- Tab: Checklist -->
+    <div id="tab-checklist" class="tab-panel active">
+      <div class="card">
+        <div class="flex items-center justify-between" style="margin-bottom:18px">
+          <div class="card-title" style="margin:0" data-i18n="checklist">Checklist</div>
+          <div id="progressBadge" style="font-size:13px;font-weight:700;color:var(--primary)"></div>
+        </div>
+        <div class="progress-wrap" style="margin-bottom:18px">
+          <div class="progress-fill" id="progressFill" style="width:0%"></div>
+        </div>
+        <div id="checklistContainer">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- WhatsApp button -->
+      <a id="whatsappBtn" href="#" target="_blank"
+         class="btn btn-whatsapp" style="width:100%;margin-top:8px">
+        💬 <span data-i18n="talk_team">Falar com a equipe</span>
+      </a>
+    </div>
+
+    <!-- Tab: Invoice -->
+    <div id="tab-invoice" class="tab-panel">
+      <div id="invoiceContainer">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Tab: Services -->
+    <div id="tab-services" class="tab-panel">
+      <p class="page-subtitle" style="margin-bottom:20px" id="servicesSubtitle">
+        Conheça nossos outros serviços e expanda sua jornada em Dubai
+      </p>
+      <div class="services-grid" id="servicesGrid"></div>
+    </div>
+
+    <!-- Tab: Documents -->
+    <div id="tab-documents" class="tab-panel">
+      <div class="card">
+        <div class="flex items-center justify-between" style="margin-bottom:18px">
+          <div class="card-title" style="margin:0" data-i18n="documents">Documentos</div>
+          <label class="btn btn-outline btn-sm" style="cursor:pointer">
+            📎 <span data-i18n="upload_doc">Enviar Documento</span>
+            <input type="file" id="fileInput" style="display:none" onchange="uploadDocument(event)">
+          </label>
+        </div>
+        <div id="documentsContainer">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    let profile = null;
+
+    // ---- Init ----
+    (async () => {
+      profile = await initPage(['client', 'employee', 'admin']);
+      if (!profile) return;
+
+      // If not a client, redirect to correct panel
+      if (profile.role === 'admin')    { window.location.href = '../admin/index.html'; return; }
+      if (profile.role === 'employee') { window.location.href = '../employee/index.html'; return; }
+
+      updateServiceLabel();
+      updateWhatsApp();
+      loadChecklist();
+      loadInvoice();
+      renderServices();
+      loadDocuments();
+    })();
+
+    function updateServiceLabel() {
+      const el = document.getElementById('serviceLabel');
+      if (!profile.services) return;
+      const name = currentLang === 'pt' ? profile.services.name_pt : profile.services.name_en;
+      el.textContent = (currentLang === 'pt' ? 'Processo: ' : 'Process: ') + name;
+    }
+
+    function updateWhatsApp() {
+      const btn = document.getElementById('whatsappBtn');
+      const msg = currentLang === 'pt'
+        ? `Olá! Preciso de informações sobre meu processo na BrasilDubai. Meu nome é ${profile.full_name}.`
+        : `Hello! I need information about my process at BrasilDubai. My name is ${profile.full_name}.`;
+      btn.href = waLink(COMPANY_WHATSAPP, msg);
+    }
+
+    // ---- Checklist ----
+    async function loadChecklist() {
+      const container = document.getElementById('checklistContainer');
+
+      const { data: steps, error } = await supabase
+        .from('client_checklist')
+        .select('*, checklist_templates(step_order, title_pt, title_en, percentage)')
+        .eq('client_id', profile.id)
+        .order('checklist_templates(step_order)');
+
+      if (error || !steps || steps.length === 0) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div>
+          <p class="empty-text">${currentLang === 'pt' ? 'Nenhuma etapa cadastrada ainda.' : 'No steps registered yet.'}</p></div>`;
+        return;
+      }
+
+      const pct = calcProgress(steps);
+      document.getElementById('progressFill').style.width = pct + '%';
+      document.getElementById('progressBadge').textContent = pct + '%';
+
+      container.innerHTML = steps.map((s, i) => {
+        const tpl     = s.checklist_templates;
+        const title   = currentLang === 'pt' ? tpl.title_pt : tpl.title_en;
+        const badges  = { done: t('done'), in_progress: t('in_progress'), pending: t('pending') };
+        const badge   = badges[s.status] || s.status;
+        const pctText = tpl.percentage != null ? `${tpl.percentage}%` : '';
+        return `
+          <div class="checklist-item ${s.status}">
+            <div class="step-bubble">${tpl.step_order}</div>
+            <div class="step-info">
+              <div class="step-title">${title}</div>
+              ${pctText ? `<div class="step-pct">${pctText}</div>` : ''}
+            </div>
+            <div class="step-badge">${badge}</div>
+          </div>`;
+      }).join('');
+    }
+
+    // ---- Invoice ----
+    async function loadInvoice() {
+      const container = document.getElementById('invoiceContainer');
+
+      const { data: invoices } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('client_id', profile.id)
+        .eq('is_paid', false)
+        .order('created_at', { ascending: false });
+
+      if (!invoices || invoices.length === 0) {
+        container.innerHTML = `<div class="card"><div class="empty-state">
+          <div class="empty-icon">✅</div>
+          <p class="empty-text" data-i18n="no_invoice">${t('no_invoice')}</p>
+        </div></div>`;
+        return;
+      }
+
+      container.innerHTML = invoices.map(inv => `
+        <div class="card invoice-card">
+          <div class="card-title" data-i18n="open_invoice">Fatura em Aberto</div>
+          <div class="invoice-amount">${formatCurrency(inv.amount, inv.currency)}</div>
+          <p class="invoice-desc">${inv.description}</p>
+          ${inv.due_date ? `<p class="invoice-due">📅 ${t('due_date')}: ${formatDate(inv.due_date)}</p>` : ''}
+          <div style="margin-top:16px">
+            <a href="${buildPayWALink(inv)}" target="_blank"
+               class="btn btn-whatsapp" style="width:100%">
+              💬 <span data-i18n="pay_whatsapp">Pagar via WhatsApp</span>
+            </a>
+          </div>
+        </div>`).join('');
+    }
+
+    function buildPayWALink(inv) {
+      const msg = currentLang === 'pt'
+        ? `Olá! Quero efetuar o pagamento da fatura: "${inv.description}" no valor de ${formatCurrency(inv.amount, inv.currency)}. Meu nome é ${profile.full_name}.`
+        : `Hello! I want to pay the invoice: "${inv.description}" for ${formatCurrency(inv.amount, inv.currency)}. My name is ${profile.full_name}.`;
+      return waLink(COMPANY_WHATSAPP, msg);
+    }
+
+    // ---- Services ----
+    async function renderServices() {
+      const grid = document.getElementById('servicesGrid');
+      const subtitle = document.getElementById('servicesSubtitle');
+      if (subtitle) subtitle.textContent = currentLang === 'pt'
+        ? 'Conheça nossos serviços e expanda sua jornada em Dubai'
+        : 'Explore our services and expand your Dubai journey';
+
+      // Fetch jotform links from DB
+      const { data: dbServices } = await supabase.from('services').select('slug, jotform_link, whatsapp_number');
+      const jotformMap = {};
+      if (dbServices) dbServices.forEach(s => { jotformMap[s.slug] = s; });
+
+      grid.innerHTML = Object.values(SERVICES_DATA).map(svc => {
+        const name = svc.name[currentLang];
+        const desc = svc.desc[currentLang];
+        const msg = currentLang === 'pt'
+          ? `Olá! Tenho interesse no serviço "${name}". Meu nome é ${profile.full_name}.`
+          : `Hello! I'm interested in the service "${name}". My name is ${profile.full_name}.`;
+        const wa = waLink(COMPANY_WHATSAPP, msg);
+        return `
+          <div class="service-card">
+            <div class="service-icon">${svc.icon}</div>
+            <div class="service-name">${name}</div>
+            <div class="service-desc">${desc}</div>
+            <a href="${wa}" target="_blank" class="btn btn-whatsapp btn-sm">
+              💬 <span>${t('hire')}</span>
+            </a>
+          </div>`;
+      }).join('');
+    }
+
+    // ---- Documents ----
+    async function loadDocuments() {
+      const container = document.getElementById('documentsContainer');
+
+      const { data: docs, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('client_id', profile.id)
+        .order('uploaded_at', { ascending: false });
+
+      if (!docs || docs.length === 0) {
+        container.innerHTML = `<p class="empty-state"><span class="empty-icon">📂</span><br>
+          <span class="empty-text">${t('no_documents')}</span></p>`;
+        return;
+      }
+
+      container.innerHTML = docs.map(doc => `
+        <div class="doc-item">
+          <div>
+            <div class="doc-name">📄 ${doc.filename}</div>
+            <div class="doc-date">${formatDateTime(doc.uploaded_at)}</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="downloadDoc('${doc.storage_path}', '${doc.filename}')">
+            ⬇️ <span data-i18n="download">Baixar</span>
+          </button>
+        </div>`).join('');
+    }
+
+    async function uploadDocument(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const path = `${profile.id}/${Date.now()}_${file.name}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('documents').upload(path, file);
+
+      if (uploadErr) { showToast(t('error_occurred'), 'error'); return; }
+
+      const { error: dbErr } = await supabase.from('documents').insert({
+        client_id: profile.id,
+        filename: file.name,
+        storage_path: path,
+        uploaded_by: profile.id
+      });
+
+      if (dbErr) { showToast(t('error_occurred'), 'error'); return; }
+
+      showToast(t('file_uploaded'), 'success');
+      event.target.value = '';
+      loadDocuments();
+    }
+
+    async function downloadDoc(storagePath, filename) {
+      const { data, error } = await supabase.storage
+        .from('documents').createSignedUrl(storagePath, 60);
+      if (error || !data) { showToast(t('error_occurred'), 'error'); return; }
+      const a = document.createElement('a');
+      a.href = data.signedUrl;
+      a.download = filename;
+      a.target = '_blank';
+      a.click();
+    }
+
+    // ---- Tab switching ----
+    function switchTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      event.target.classList.add('active');
+
+      // Re-apply translations when switching
+      applyTranslations();
+      updateServiceLabel();
+      updateWhatsApp();
+    }
+
+    // Lang toggle re-renders
+    const _origToggle = toggleLang;
+    window.toggleLang = function() {
+      _origToggle();
+      updateServiceLabel();
+      updateWhatsApp();
+      loadChecklist();
+      loadInvoice();
+      renderServices();
+    };
+  </script>
+</body>
+</html>

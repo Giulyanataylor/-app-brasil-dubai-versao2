@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrasilDubai — Painel Admin</title>
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body class="app-layout">
+
+  <header class="app-header">
+    <span class="header-logo">🇧🇷 BrasilDubai</span>
+    <div class="header-actions">
+      <span class="header-user" id="headerUser">…</span>
+      <span class="header-role-badge" id="headerRole"></span>
+      <button class="lang-btn-header" onclick="toggleLang()">🇺🇸 EN</button>
+      <button class="btn-logout" onclick="logout()" data-i18n="logout">Sair</button>
+    </div>
+  </header>
+
+  <main class="app-content">
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-number" id="statTotal">—</div>
+        <div class="stat-label" data-i18n="total_clients">Clientes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statActive">—</div>
+        <div class="stat-label" data-i18n="active_processes">Em Andamento</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="statInvoices">—</div>
+        <div class="stat-label" data-i18n="unpaid_label">Faturas em aberto</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('add_client', event)" data-i18n="add_client">Novo Cliente</button>
+      <button class="tab-btn" onclick="switchTab('users', event)"      data-i18n="manage_users">Usuários</button>
+      <button class="tab-btn" onclick="switchTab('invoices_tab', event)" data-i18n="add_invoice">Faturas</button>
+      <button class="tab-btn" onclick="switchTab('reports', event)"    data-i18n="reports">Relatórios</button>
+    </div>
+
+    <!-- ===== TAB: ADD CLIENT ===== -->
+    <div id="tab-add_client" class="tab-panel active">
+      <div class="card">
+        <div class="card-title" data-i18n="add_client">Novo Cliente</div>
+        <div id="createError"   class="error-msg"></div>
+        <div id="createSuccess" class="success-msg"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-group">
+            <label data-i18n="client_name">Nome do Cliente</label>
+            <input type="text" id="newName" required placeholder="Nome completo">
+          </div>
+          <div class="form-group">
+            <label data-i18n="client_whatsapp">WhatsApp do Cliente</label>
+            <input type="tel" id="newWhatsapp" placeholder="+971 50 000 0000">
+          </div>
+          <div class="form-group">
+            <label data-i18n="client_email">Email</label>
+            <input type="email" id="newEmail" required placeholder="cliente@email.com">
+          </div>
+          <div class="form-group">
+            <label data-i18n="client_password">Senha Inicial</label>
+            <input type="text" id="newPassword" required placeholder="Mínimo 6 caracteres">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label data-i18n="select_service">Serviço Contratado</label>
+            <select id="newService" onchange="onServiceChange(this.value)">
+              <option value="" data-i18n="select_service_ph">Selecione o serviço...</option>
+              <option value="1">🏢 Abertura de Empresa (Freezone)</option>
+              <option value="2">🛂 Visto de Independente</option>
+              <option value="3">🚗 CNH em Dubai</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- WhatsApp preview -->
+        <div id="waPreviewBlock" style="display:none">
+          <div class="divider"></div>
+          <p style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:8px" data-i18n="wa_preview_title">
+            📱 Mensagem WhatsApp gerada:
+          </p>
+          <div class="wa-preview" id="waPreviewText"></div>
+          <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="copyWAMessage()">
+              📋 <span data-i18n="copy_msg">Copiar mensagem</span>
+            </button>
+            <a id="waSendLink" href="#" target="_blank" class="btn btn-whatsapp btn-sm">
+              💬 <span data-i18n="send_whatsapp">Enviar via WhatsApp</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <button class="btn btn-primary" id="createBtn" onclick="createClient()" style="max-width:260px">
+          <span data-i18n="create_client">Cadastrar Cliente</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== TAB: USERS ===== -->
+    <div id="tab-users" class="tab-panel">
+      <div class="card">
+        <div class="flex items-center justify-between" style="margin-bottom:16px">
+          <div class="card-title" style="margin:0" data-i18n="manage_users">Usuários</div>
+          <button class="btn btn-outline btn-sm" onclick="exportUsersCSV()">
+            📊 <span data-i18n="export_csv">Exportar CSV</span>
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table id="usersTable">
+            <thead>
+              <tr>
+                <th data-i18n="name_col">Nome</th>
+                <th data-i18n="email_col">Email</th>
+                <th data-i18n="role_col">Perfil</th>
+                <th data-i18n="service_label">Serviço</th>
+                <th data-i18n="actions_col">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="usersBody">
+              <tr><td colspan="5"><div class="loading"><div class="spinner"></div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TAB: INVOICES ===== -->
+    <div id="tab-invoices_tab" class="tab-panel">
+      <!-- Add invoice form -->
+      <div class="card">
+        <div class="card-title" data-i18n="add_invoice">Adicionar Fatura</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-group" style="grid-column:1/-1">
+            <label data-i18n="invoice_client">Cliente</label>
+            <select id="invClient">
+              <option value="">Selecione o cliente...</option>
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label data-i18n="invoice_desc">Descrição da Fatura</label>
+            <input type="text" id="invDesc" placeholder="Ex: Abertura de empresa Freezone">
+          </div>
+          <div class="form-group">
+            <label data-i18n="invoice_amount">Valor</label>
+            <input type="number" id="invAmount" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label data-i18n="invoice_currency">Moeda</label>
+            <select id="invCurrency">
+              <option value="AED">AED (Dirham)</option>
+              <option value="BRL">BRL (Real)</option>
+              <option value="USD">USD (Dólar)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label data-i18n="invoice_due">Vencimento</label>
+            <input type="date" id="invDue">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="addInvoice()" style="max-width:200px">
+          <span data-i18n="add_invoice_btn">Adicionar Fatura</span>
+        </button>
+      </div>
+
+      <!-- Invoices list -->
+      <div class="card">
+        <div class="card-title" data-i18n="add_invoice">Faturas</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="name_col">Cliente</th>
+                <th data-i18n="invoice_desc">Descrição</th>
+                <th data-i18n="amount_col">Valor</th>
+                <th data-i18n="invoice_due">Vencimento</th>
+                <th data-i18n="status_col">Status</th>
+                <th data-i18n="actions_col">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="invoicesBody">
+              <tr><td colspan="6"><div class="loading"><div class="spinner"></div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TAB: REPORTS ===== -->
+    <div id="tab-reports" class="tab-panel">
+      <div class="card">
+        <div class="card-title" data-i18n="reports">Relatórios</div>
+
+        <!-- Per-service breakdown -->
+        <div id="reportsContent">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- JotForm links config -->
+      <div class="card">
+        <div class="card-title">⚙️ Links JotForm</div>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
+          Configure os links dos formulários para cada serviço.
+        </p>
+        <div id="jotformLinks">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    let adminProfile = null;
+    let allUsers = [];
+    let dbServices = [];
+
+    (async () => {
+      adminProfile = await initPage(['admin']);
+      if (!adminProfile) return;
+      await loadDashboardData();
+    })();
+
+    async function loadDashboardData() {
+      const [usersRes, invoicesRes, servicesRes] = await Promise.all([
+        supabase.from('profiles').select('*, services(slug, name_pt, name_en)').order('full_name'),
+        supabase.from('invoices').select('is_paid'),
+        supabase.from('services').select('*').order('id')
+      ]);
+
+      allUsers   = usersRes.data  || [];
+      dbServices = servicesRes.data || [];
+      const invoices = invoicesRes.data || [];
+
+      // Stats
+      const clients = allUsers.filter(u => u.role === 'client');
+      document.getElementById('statTotal').textContent   = clients.length;
+      document.getElementById('statActive').textContent  = clients.length;
+      document.getElementById('statInvoices').textContent = invoices.filter(i => !i.is_paid).length;
+
+      // Populate client selects
+      populateClientSelect();
+      renderUsersTable();
+      loadInvoicesTable();
+      renderReports();
+      renderJotformLinks();
+    }
+
+    // ---- Tab switching ----
+    function switchTab(name, e) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      if (e) e.target.classList.add('active');
+      applyTranslations();
+    }
+
+    // ---- Service select → WA preview ----
+    function onServiceChange(serviceId) {
+      const name  = document.getElementById('newName').value.trim();
+      const phone = document.getElementById('newWhatsapp').value.trim();
+      if (!serviceId) { document.getElementById('waPreviewBlock').style.display = 'none'; return; }
+
+      const svcSlug = getServiceSlugById(parseInt(serviceId));
+      const svc = SERVICES_DATA[svcSlug];
+      const dbSvc = dbServices.find(s => s.id === parseInt(serviceId));
+      const jotformLink = dbSvc?.jotform_link || '[link do formulário]';
+      const svcName = svc ? svc.name.pt : '';
+
+      const msg = `Olá ${name || '[Nome]'}! 👋\n\n` +
+        `Bem-vindo à BrasilDubai! 🇧🇷🇦🇪\n\n` +
+        `Seu processo de *${svcName}* foi iniciado.\n\n` +
+        `Para darmos início, preencha o formulário abaixo com suas informações:\n` +
+        `👉 ${jotformLink}\n\n` +
+        `Acesse seu portal em: https://app.brasildubai.com\n` +
+        `📧 Email: ${document.getElementById('newEmail').value || '[email]'}\n` +
+        `🔑 Senha: ${document.getElementById('newPassword').value || '[senha]'}\n\n` +
+        `Qualquer dúvida, estamos à disposição! 💚`;
+
+      document.getElementById('waPreviewText').textContent = msg;
+      document.getElementById('waPreviewBlock').style.display = 'block';
+
+      const waPhone = phone.replace(/\D/g, '') || COMPANY_WHATSAPP;
+      document.getElementById('waSendLink').href = waLink(waPhone, msg);
+    }
+
+    function copyWAMessage() {
+      const text = document.getElementById('waPreviewText').textContent;
+      navigator.clipboard.writeText(text).then(() => showToast(t('copied'), 'success'));
+    }
+
+    // ---- Create client ----
+    async function createClient() {
+      const btn       = document.getElementById('createBtn');
+      const errEl     = document.getElementById('createError');
+      const succEl    = document.getElementById('createSuccess');
+      errEl.classList.remove('show');
+      succEl.classList.remove('show');
+
+      const name     = document.getElementById('newName').value.trim();
+      const email    = document.getElementById('newEmail').value.trim();
+      const password = document.getElementById('newPassword').value;
+      const whatsapp = document.getElementById('newWhatsapp').value.trim();
+      const serviceId = parseInt(document.getElementById('newService').value);
+
+      if (!name || !email || !password || !serviceId) {
+        errEl.textContent = currentLang === 'pt'
+          ? 'Preencha todos os campos obrigatórios.'
+          : 'Please fill in all required fields.';
+        errEl.classList.add('show');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = `<span>${t('creating')}</span>`;
+
+      // 1. Sign up the user
+      const { data: authData, error: authErr } = await supabase.auth.signUp({
+        email, password,
+        options: { data: { full_name: name, whatsapp } }
+      });
+
+      if (authErr) {
+        errEl.textContent = authErr.message;
+        errEl.classList.add('show');
+        btn.disabled = false;
+        btn.innerHTML = `<span data-i18n="create_client">${t('create_client')}</span>`;
+        return;
+      }
+
+      const userId = authData.user?.id;
+
+      // 2. Upsert profile
+      if (userId) {
+        await supabase.from('profiles').upsert({
+          id: userId, full_name: name,
+          whatsapp, role: 'client', service_id: serviceId
+        });
+
+        // 3. Create checklist from templates
+        const { data: templates } = await supabase
+          .from('checklist_templates')
+          .select('id')
+          .eq('service_id', serviceId);
+
+        if (templates && templates.length > 0) {
+          const rows = templates.map(tpl => ({
+            client_id: userId,
+            template_step_id: tpl.id,
+            status: 'pending'
+          }));
+          await supabase.from('client_checklist').insert(rows);
+        }
+      }
+
+      succEl.textContent = currentLang === 'pt'
+        ? `✅ Cliente ${name} cadastrado! Envie a mensagem gerada via WhatsApp.`
+        : `✅ Client ${name} registered! Send the generated message via WhatsApp.`;
+      succEl.classList.add('show');
+      btn.disabled = false;
+      btn.innerHTML = `<span data-i18n="create_client">${t('create_client')}</span>`;
+      showToast(t('client_created'), 'success');
+
+      // Reset form
+      ['newName','newEmail','newPassword','newWhatsapp'].forEach(id => {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('newService').value = '';
+      document.getElementById('waPreviewBlock').style.display = 'none';
+
+      await loadDashboardData();
+    }
+
+    // ---- Users table ----
+    function renderUsersTable() {
+      const tbody = document.getElementById('usersBody');
+      if (!allUsers.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">${t('no_clients')}</td></tr>`;
+        return;
+      }
+      const roleLabels = { admin: t('role_admin'), employee: t('role_employee'), client: t('role_client') };
+      const roleBadge  = { admin: 'badge-admin', employee: 'badge-employee', client: 'badge-client' };
+
+      tbody.innerHTML = allUsers.map(u => {
+        const svcName = u.services
+          ? (currentLang === 'pt' ? u.services.name_pt : u.services.name_en)
+          : '—';
+        return `
+          <tr>
+            <td><strong>${u.full_name}</strong></td>
+            <td style="color:var(--text-muted)">${u.email || '—'}</td>
+            <td><span class="badge ${roleBadge[u.role] || 'badge-client'}">${roleLabels[u.role] || u.role}</span></td>
+            <td>${u.services ? svcName : '—'}</td>
+            <td>
+              <select class="status-select" onchange="updateUserRole('${u.id}', this.value)">
+                <option value="client"   ${u.role === 'client'   ? 'selected' : ''}>${t('role_client')}</option>
+                <option value="employee" ${u.role === 'employee' ? 'selected' : ''}>${t('role_employee')}</option>
+                <option value="admin"    ${u.role === 'admin'    ? 'selected' : ''}>${t('role_admin')}</option>
+              </select>
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+    async function updateUserRole(userId, newRole) {
+      const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
+      if (error) { showToast(t('error_occurred'), 'error'); return; }
+      showToast(t('status_updated'), 'success');
+      const u = allUsers.find(u => u.id === userId);
+      if (u) u.role = newRole;
+    }
+
+    function populateClientSelect() {
+      const sel = document.getElementById('invClient');
+      const clients = allUsers.filter(u => u.role === 'client');
+      sel.innerHTML = `<option value="">${currentLang === 'pt' ? 'Selecione o cliente...' : 'Select client...'}</option>` +
+        clients.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
+    }
+
+    function exportUsersCSV() {
+      const header = ['Nome', 'Email', 'Perfil', 'Serviço', 'WhatsApp'];
+      const rows = allUsers.map(u => [
+        u.full_name, u.email || '', u.role,
+        u.services ? u.services.name_pt : '',
+        u.whatsapp || ''
+      ]);
+      const csv = [header, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = 'brasildubai_clientes.csv'; a.click();
+    }
+
+    // ---- Invoices ----
+    async function loadInvoicesTable() {
+      const tbody = document.getElementById('invoicesBody');
+      const { data: invoices } = await supabase
+        .from('invoices')
+        .select('*, profiles(full_name)')
+        .order('created_at', { ascending: false });
+
+      if (!invoices || !invoices.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px">${t('no_invoices')}</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = invoices.map(inv => `
+        <tr>
+          <td><strong>${inv.profiles?.full_name || '—'}</strong></td>
+          <td>${inv.description}</td>
+          <td>${formatCurrency(inv.amount, inv.currency)}</td>
+          <td>${formatDate(inv.due_date)}</td>
+          <td><span class="badge ${inv.is_paid ? 'badge-paid' : 'badge-unpaid'}">
+            ${inv.is_paid ? t('paid_label') : t('unpaid_label')}
+          </span></td>
+          <td>
+            ${!inv.is_paid
+              ? `<button class="btn btn-outline btn-sm" onclick="markPaid('${inv.id}')">✅ ${t('mark_paid')}</button>`
+              : '—'}
+          </td>
+        </tr>`).join('');
+    }
+
+    async function addInvoice() {
+      const clientId = document.getElementById('invClient').value;
+      const desc     = document.getElementById('invDesc').value.trim();
+      const amount   = parseFloat(document.getElementById('invAmount').value);
+      const currency = document.getElementById('invCurrency').value;
+      const due      = document.getElementById('invDue').value;
+
+      if (!clientId || !desc || !amount) {
+        showToast(currentLang === 'pt' ? 'Preencha todos os campos.' : 'Fill in all fields.', 'error');
+        return;
+      }
+
+      const { error } = await supabase.from('invoices').insert({
+        client_id: clientId, description: desc,
+        amount, currency, due_date: due || null
+      });
+
+      if (error) { showToast(t('error_occurred'), 'error'); return; }
+
+      showToast(t('invoice_added'), 'success');
+      ['invClient','invDesc','invAmount','invDue'].forEach(id => {
+        document.getElementById(id).value = id === 'invCurrency' ? 'AED' : '';
+      });
+      loadInvoicesTable();
+      loadDashboardData();
+    }
+
+    async function markPaid(invoiceId) {
+      const { error } = await supabase.from('invoices').update({ is_paid: true }).eq('id', invoiceId);
+      if (error) { showToast(t('error_occurred'), 'error'); return; }
+      showToast(t('status_updated'), 'success');
+      loadInvoicesTable();
+      loadDashboardData();
+    }
+
+    // ---- Reports ----
+    async function renderReports() {
+      const container = document.getElementById('reportsContent');
+      const clients = allUsers.filter(u => u.role === 'client');
+
+      const byService = {};
+      Object.values(SERVICES_DATA).forEach(s => { byService[s.id] = { name: s.name.pt, count: 0 }; });
+      clients.forEach(c => { if (c.service_id && byService[c.service_id]) byService[c.service_id].count++; });
+
+      container.innerHTML = `
+        <div class="stats-row" style="grid-template-columns:repeat(3,1fr)">
+          ${Object.values(byService).map(s => `
+            <div class="stat-card">
+              <div class="stat-number">${s.count}</div>
+              <div class="stat-label">${s.name}</div>
+            </div>`).join('')}
+        </div>
+        <p style="font-size:13px;color:var(--text-muted);margin-top:12px">
+          ${currentLang === 'pt'
+            ? `Total de ${clients.length} clientes cadastrados.`
+            : `Total of ${clients.length} registered clients.`}
+        </p>`;
+    }
+
+    // ---- JotForm links ----
+    async function renderJotformLinks() {
+      const container = document.getElementById('jotformLinks');
+      if (!dbServices.length) { container.innerHTML = '<p style="color:var(--text-muted)">Serviços não encontrados.</p>'; return; }
+
+      container.innerHTML = dbServices.map(svc => {
+        const svcData = SERVICES_DATA[svc.slug];
+        const name = svcData ? svcData.name.pt : svc.slug;
+        return `
+          <div class="form-group">
+            <label>${name}</label>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="jf_${svc.id}" value="${svc.jotform_link || ''}"
+                     placeholder="https://form.jotform.com/...">
+              <button class="btn btn-outline btn-sm" style="white-space:nowrap"
+                      onclick="saveJotform(${svc.id})">💾 Salvar</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    async function saveJotform(serviceId) {
+      const link = document.getElementById(`jf_${serviceId}`).value.trim();
+      const { error } = await supabase.from('services').update({ jotform_link: link }).eq('id', serviceId);
+      if (error) { showToast(t('error_occurred'), 'error'); return; }
+      showToast('Link salvo!', 'success');
+      await loadDashboardData();
+    }
+
+    // Lang toggle
+    const _origToggle = toggleLang;
+    window.toggleLang = function() {
+      _origToggle();
+      renderUsersTable();
+      loadInvoicesTable();
+      renderReports();
+      renderJotformLinks();
+    };
+  </script>
+</body>
+</html>
