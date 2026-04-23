@@ -110,6 +110,10 @@
         <div id="clientList">
           <div class="loading"><div class="spinner"></div></div>
         </div>
+        <p id="clientsSearchHint" style="font-size:12px;color:var(--text-muted);margin:10px 2px 6px" data-i18n="clients_search_hint"></p>
+        <div id="clientsLoadMoreWrap" style="display:none;margin-top:4px">
+          <button type="button" class="btn btn-outline btn-sm" id="loadMoreClientsBtn" onclick="loadClientsPage(false)" data-i18n="load_more_clients">Carregar mais clientes</button>
+        </div>
       </div>
 
       <!-- Right: checklist -->
@@ -131,6 +135,7 @@
       <div class="form-group">
         <label>Selecionar arquivo(s)</label>
         <input type="file" id="modalFileInput" multiple style="padding:8px">
+        <p style="font-size:12px;color:var(--text-muted);margin-top:6px" data-i18n="max_upload_hint"></p>
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeUploadModal()" data-i18n="cancel">Cancelar</button>
@@ -149,32 +154,62 @@
     let empProfile = null;
     let allClients = [];
     let selectedClientId = null;
+    const EMP_CLIENT_BATCH = 60;
+    let empClientsPage = 0;
+    let empClientsHasMore = true;
+    let empClientsLoading = false;
+    const EMP_DOCS_PAGE = 20;
+    let empDocsClientId = null;
+    let empDocsOffset = 0;
+    let empDocsHasMore = false;
 
     (async () => {
       empProfile = await initPage(['employee', 'admin']);
       if (!empProfile) return;
-      await loadAllClients();
+      await loadClientsPage(true);
     })();
 
-    // ---- Load clients ----
-    async function loadAllClients() {
+    // ---- Load clients (paginated) ----
+    async function loadClientsPage(reset) {
+      if (empClientsLoading) return;
+      empClientsLoading = true;
+      const moreBtn = document.getElementById('loadMoreClientsBtn');
+      if (moreBtn) moreBtn.disabled = true;
+
+      if (reset) {
+        empClientsPage = 0;
+        allClients = [];
+        empClientsHasMore = true;
+      }
+
+      const from = empClientsPage * EMP_CLIENT_BATCH;
+      const to = from + EMP_CLIENT_BATCH - 1;
+
       const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, whatsapp, service_id, services(slug, name_pt, name_en)')
         .eq('role', 'client')
-        .order('full_name');
+        .order('full_name')
+        .range(from, to);
 
-      if (error) { showToast(t('error_occurred'), 'error'); return; }
+      if (error) {
+        showToast(t('error_occurred'), 'error');
+        empClientsLoading = false;
+        if (moreBtn) moreBtn.disabled = false;
+        return;
+      }
 
-      const clients = data || [];
-      const clientIds = clients.map(c => c.id);
+      const batch = data || [];
+      empClientsHasMore = batch.length === EMP_CLIENT_BATCH;
+      empClientsPage += 1;
 
+      const newIds = batch.map(c => c.id);
       const statusMap = {};
-      if (clientIds.length) {
+      if (newIds.length) {
         const { data: checklistRows } = await supabase
           .from('client_checklist')
           .select('client_id,status')
-          .in('client_id', clientIds);
+          .in('client_id', newIds);
 
         (checklistRows || []).forEach(row => {
           if (!statusMap[row.client_id]) statusMap[row.client_id] = [];
@@ -182,20 +217,29 @@
         });
       }
 
-      allClients = clients.map(c => {
+      const enriched = batch.map(c => {
         const statuses = statusMap[c.id] || [];
         const isCompleted = statuses.length > 0 && statuses.every(s => s === 'done');
         return { ...c, process_state: isCompleted ? 'completed' : 'in_progress' };
       });
 
+      allClients = reset ? enriched : allClients.concat(enriched);
+
       const inProgressCount = allClients.filter(c => c.process_state === 'in_progress').length;
       const completedCount = allClients.filter(c => c.process_state === 'completed').length;
       document.getElementById('clientCount').textContent =
         currentLang === 'pt'
-          ? `${inProgressCount} em andamento • ${completedCount} concluídos`
-          : `${inProgressCount} in progress • ${completedCount} completed`;
+          ? `${inProgressCount} em andamento • ${completedCount} concluídos (lista: ${allClients.length})`
+          : `${inProgressCount} in progress • ${completedCount} completed (loaded: ${allClients.length})`;
 
-      renderClientList(allClients);
+      const q = (document.getElementById('searchInput').value || '').toLowerCase();
+      renderClientList(allClients.filter(c => c.full_name.toLowerCase().includes(q)));
+
+      const wrap = document.getElementById('clientsLoadMoreWrap');
+      if (wrap) wrap.style.display = empClientsHasMore ? 'block' : 'none';
+      if (moreBtn) moreBtn.disabled = false;
+      empClientsLoading = false;
+      applyTranslations();
     }
 
     function renderClientList(clients) {
@@ -272,9 +316,30 @@
 
       const pct = calcProgress(steps || []);
 
+      empDocsClientId = clientId;
+      empDocsOffset = 0;
       const { data: docs } = await supabase
-        .from('documents').select('*').eq('client_id', clientId)
-        .order('uploaded_at', { ascending: false });
+        .from('documents')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('uploaded_at', { ascending: false })
+        .range(0, EMP_DOCS_PAGE - 1);
+      empDocsHasMore = (docs && docs.length === EMP_DOCS_PAGE);
+      empDocsOffset = docs?.length || 0;
+
+      const docsHtml = !docs || docs.length === 0
+        ? `<p style="color:var(--text-muted);font-size:14px">${t('no_documents')}</p>`
+        : docs.map(d => `
+                <div class="doc-item">
+                  <div>
+                    <div class="doc-name">📄 ${d.filename}</div>
+                    <div class="doc-date">${formatDateTime(d.uploaded_at)}</div>
+                  </div>
+                  <button class="btn btn-outline btn-sm"
+                    onclick="downloadDoc('${d.storage_path}','${d.filename}')">
+                    ⬇️ <span data-i18n="download">Baixar</span>
+                  </button>
+                </div>`).join('');
 
       panel.innerHTML = `
         <div class="card">
@@ -304,21 +369,9 @@
               📎 <span data-i18n="upload_doc">Enviar Documento</span>
             </button>
           </div>
-          <div id="empDocs">
-            ${!docs || docs.length === 0
-              ? `<p style="color:var(--text-muted);font-size:14px">${t('no_documents')}</p>`
-              : docs.map(d => `
-                <div class="doc-item">
-                  <div>
-                    <div class="doc-name">📄 ${d.filename}</div>
-                    <div class="doc-date">${formatDateTime(d.uploaded_at)}</div>
-                  </div>
-                  <button class="btn btn-outline btn-sm"
-                    onclick="downloadDoc('${d.storage_path}','${d.filename}')">
-                    ⬇️ <span data-i18n="download">Baixar</span>
-                  </button>
-                </div>`).join('')
-            }
+          <div id="empDocsInner">${docsHtml}</div>
+          <div id="empDocsPager" style="margin-top:12px;text-align:center;display:${empDocsHasMore ? 'block' : 'none'}">
+            <button type="button" class="btn btn-outline btn-sm" onclick="loadMoreEmpDocs()" data-i18n="load_more_documents">Carregar mais documentos</button>
           </div>
         </div>`;
 
@@ -451,6 +504,14 @@
       const files = Array.from(fileInput.files || []);
       if (!files.length || !uploadTargetClientId) return;
 
+      const bad = bdValidateUploadFiles(files);
+      if (!bad.ok) {
+        showToast(currentLang === 'pt'
+          ? `${t('file_too_large')}: "${bad.file}" (máx. ${bdFormatBytes(BD_MAX_UPLOAD_BYTES)}).`
+          : `${t('file_too_large')}: "${bad.file}" (max ${bdFormatBytes(BD_MAX_UPLOAD_BYTES)}).`, 'error');
+        return;
+      }
+
       for (const file of files) {
         const path = `${uploadTargetClientId}/${Date.now()}_${file.name}`;
         const { error: upErr } = await supabase.storage.from('documents').upload(path, file);
@@ -477,6 +538,42 @@
       if (!data) { showToast(t('error_occurred'), 'error'); return; }
       const a = document.createElement('a');
       a.href = data.signedUrl; a.download = filename; a.target = '_blank'; a.click();
+    }
+
+    async function loadMoreEmpDocs() {
+      if (!empDocsClientId || !empDocsHasMore) return;
+      const from = empDocsOffset;
+      const to = from + EMP_DOCS_PAGE - 1;
+      const { data: more, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('client_id', empDocsClientId)
+        .order('uploaded_at', { ascending: false })
+        .range(from, to);
+      if (error || !more?.length) {
+        empDocsHasMore = false;
+        const pg = document.getElementById('empDocsPager');
+        if (pg) pg.style.display = 'none';
+        return;
+      }
+      const inner = document.getElementById('empDocsInner');
+      if (!inner) return;
+      inner.insertAdjacentHTML('beforeend', more.map(d => `
+                <div class="doc-item">
+                  <div>
+                    <div class="doc-name">📄 ${d.filename}</div>
+                    <div class="doc-date">${formatDateTime(d.uploaded_at)}</div>
+                  </div>
+                  <button class="btn btn-outline btn-sm"
+                    onclick="downloadDoc('${d.storage_path}','${d.filename}')">
+                    ⬇️ <span data-i18n="download">Baixar</span>
+                  </button>
+                </div>`).join(''));
+      empDocsOffset += more.length;
+      empDocsHasMore = more.length === EMP_DOCS_PAGE;
+      const pg = document.getElementById('empDocsPager');
+      if (pg) pg.style.display = empDocsHasMore ? 'block' : 'none';
+      applyTranslations();
     }
 
     // Lang toggle

@@ -310,6 +310,7 @@
             </tbody>
           </table>
         </div>
+        <div id="usersPager" style="display:none;margin-top:12px;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap"></div>
       </div>
     </div>
 
@@ -452,12 +453,19 @@
   <script src="../js/auth.js"></script>
   <script>
     let adminProfile = null;
-    let allUsers = [];
     let dbServices = [];
     let selectedProgressClientId = null;
     let dashboardActiveClients = [];
     let historyClientFilter = '';
     let historyUpdaterFilter = '';
+    let clientOptionsList = [];
+    let staffOptionsList = [];
+    const USERS_DIR_PAGE_SIZE = 30;
+    const ADMIN_PROFILE_IN_CHUNK = 100;
+    const ADMIN_CLIENT_OPTIONS_PAGE = 500;
+    let usersDirectoryPage = 0;
+    let usersDirectoryTotal = 0;
+    let usersDirectoryRows = [];
 
     (async () => {
       adminProfile = await initPage(['admin']);
@@ -465,59 +473,137 @@
       await loadDashboardData();
     })();
 
+    async function fetchProfilesInChunks(ids, selectFields) {
+      const unique = [...new Set((ids || []).filter(Boolean))];
+      const out = [];
+      for (let i = 0; i < unique.length; i += ADMIN_PROFILE_IN_CHUNK) {
+        const chunk = unique.slice(i, i + ADMIN_PROFILE_IN_CHUNK);
+        const { data, error } = await supabase.from('profiles').select(selectFields).in('id', chunk);
+        if (error) { console.error(error); continue; }
+        if (data) out.push(...data);
+      }
+      return out;
+    }
+
+    async function fetchAllClientMinimalOptions() {
+      const out = [];
+      const pageSize = ADMIN_CLIENT_OPTIONS_PAGE;
+      for (let from = 0; from < 500000; from += pageSize) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .eq('role', 'client')
+          .order('full_name')
+          .range(from, from + pageSize - 1);
+        if (error) break;
+        if (!data?.length) break;
+        out.push(...data);
+        if (data.length < pageSize) break;
+      }
+      return out;
+    }
+
+    async function fetchStaffMinimal() {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('role', ['employee', 'admin'])
+        .order('full_name');
+      return data || [];
+    }
+
+    async function loadUsersDirectoryPage(page = 0) {
+      const tbody = document.getElementById('usersBody');
+      tbody.innerHTML = `<tr><td colspan="5"><div class="loading"><div class="spinner"></div></div></td></tr>`;
+      const from = page * USERS_DIR_PAGE_SIZE;
+      const to = from + USERS_DIR_PAGE_SIZE - 1;
+      const { data, error, count } = await supabase
+        .from('profiles')
+        .select('*, services(slug, name_pt, name_en)', { count: 'exact' })
+        .order('full_name')
+        .range(from, to);
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">${t('error_occurred')}</td></tr>`;
+        return;
+      }
+      usersDirectoryRows = data || [];
+      usersDirectoryTotal = typeof count === 'number' ? count : usersDirectoryRows.length;
+      usersDirectoryPage = page;
+      renderUsersTable();
+      renderUsersPager();
+    }
+
+    function renderUsersPager() {
+      const wrap = document.getElementById('usersPager');
+      if (!wrap) return;
+      const maxPage = Math.max(0, Math.ceil(usersDirectoryTotal / USERS_DIR_PAGE_SIZE) - 1);
+      if (usersDirectoryTotal <= USERS_DIR_PAGE_SIZE) {
+        wrap.style.display = 'none';
+        return;
+      }
+      wrap.style.display = 'flex';
+      wrap.innerHTML = `
+        <button type="button" class="btn btn-outline btn-sm" ${usersDirectoryPage <= 0 ? 'disabled' : ''}
+          onclick="loadUsersDirectoryPage(${usersDirectoryPage - 1})">${currentLang === 'pt' ? 'Anterior' : 'Previous'}</button>
+        <span style="font-size:13px;color:var(--text-muted)">${usersDirectoryPage + 1} / ${maxPage + 1}</span>
+        <button type="button" class="btn btn-outline btn-sm" ${usersDirectoryPage >= maxPage ? 'disabled' : ''}
+          onclick="loadUsersDirectoryPage(${usersDirectoryPage + 1})">${currentLang === 'pt' ? 'Próxima' : 'Next'}</button>
+      `;
+    }
+
     async function loadDashboardData() {
-      const [usersRes, invoicesRes, servicesRes, checklistRes] = await Promise.all([
-        supabase.from('profiles').select('*, services(slug, name_pt, name_en)').order('full_name'),
+      const [invoicesRes, servicesRes, checklistRes, clientCountRes] = await Promise.all([
         supabase.from('invoices').select('is_paid, amount, currency, created_at'),
         supabase.from('services').select('*').order('id'),
-        supabase.from('client_checklist').select('client_id, status')
+        supabase.from('client_checklist').select('client_id, status'),
+        supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'client')
       ]);
 
-      allUsers   = usersRes.data  || [];
       dbServices = servicesRes.data || [];
       const invoices = invoicesRes.data || [];
       const checklistRows = checklistRes.data || [];
+      const totalClientsCount = clientCountRes.count ?? 0;
 
-      renderDashboardCards(invoices, checklistRows);
-
-      // Populate client selects
-      populateClientSelect();
-      populateProgressClientSelect();
-      renderActiveClientList();
-      populateHistoryFilters();
-      renderUsersTable();
-      loadInvoicesTable();
-      renderReports();
-      renderJotformLinks();
-      loadRecentStepHistory();
-    }
-
-    function renderDashboardCards(invoices, checklistRows) {
-      const clients = allUsers.filter(u => u.role === 'client');
       const byClient = {};
       checklistRows.forEach(r => {
         if (!byClient[r.client_id]) byClient[r.client_id] = [];
         byClient[r.client_id].push(r.status);
       });
 
-      dashboardActiveClients = clients.filter(c => {
-        const statuses = byClient[c.id] || [];
-        if (!statuses.length) return false;
-        return statuses.some(s => s !== 'done');
-      });
-      const doneClients = clients.filter(c => {
-        const statuses = byClient[c.id] || [];
-        if (!statuses.length) return false;
-        return statuses.every(s => s === 'done');
-      });
+      const activeIds = Object.keys(byClient).filter(cid => byClient[cid].some(s => s !== 'done'));
+      const doneIds = Object.keys(byClient).filter(cid => byClient[cid].length && byClient[cid].every(s => s === 'done'));
 
+      let activeProfiles = [];
+      if (activeIds.length) {
+        activeProfiles = await fetchProfilesInChunks(activeIds, 'id, full_name');
+      }
+      const nameById = Object.fromEntries(activeProfiles.map(p => [p.id, p.full_name]));
+      dashboardActiveClients = activeIds.map(id => ({ id, full_name: nameById[id] || 'Cliente' }));
+
+      renderDashboardCards(invoices, totalClientsCount, doneIds.length);
+
+      clientOptionsList = await fetchAllClientMinimalOptions();
+      populateClientSelect();
+      populateProgressClientSelect();
+      staffOptionsList = await fetchStaffMinimal();
+      populateHistoryFilters();
+
+      renderActiveClientList();
+      await loadUsersDirectoryPage(0);
+      loadInvoicesTable();
+      renderReports().catch(() => {});
+      renderJotformLinks();
+      loadRecentStepHistory();
+    }
+
+    function renderDashboardCards(invoices, totalClientsCount, doneClientsCount) {
       document.getElementById('dashActiveCount').textContent = String(dashboardActiveClients.length);
       document.getElementById('dashNotDoneCount').textContent = String(dashboardActiveClients.length);
-      document.getElementById('dashDoneCount').textContent = String(doneClients.length);
-      document.getElementById('dashTotalClients').textContent = String(clients.length);
+      document.getElementById('dashDoneCount').textContent = String(doneClientsCount);
+      document.getElementById('dashTotalClients').textContent = String(totalClientsCount);
 
       const donut = document.getElementById('processDonut');
-      const totalForChart = Math.max(clients.length, 1);
+      const totalForChart = Math.max(totalClientsCount, 1);
       const notDonePct = (dashboardActiveClients.length / totalForChart) * 100;
       const angle = Math.round((notDonePct / 100) * 360);
       donut.style.background = `conic-gradient(#f79009 0deg, #f79009 ${angle}deg, #e4e7ec ${angle}deg, #e4e7ec 360deg)`;
@@ -580,6 +666,7 @@
         const tabBtn = document.querySelector(`.tab-btn[onclick*="switchTab('${name}'"]`);
         if (tabBtn) tabBtn.classList.add('active');
       }
+      if (name === 'users') loadUsersDirectoryPage(0);
       applyTranslations();
     }
 
@@ -721,14 +808,15 @@
     // ---- Users table ----
     function renderUsersTable() {
       const tbody = document.getElementById('usersBody');
-      if (!allUsers.length) {
+      if (!usersDirectoryRows.length) {
         tbody.innerHTML = `<tr><td colspan="5" class="empty-state">${t('no_clients')}</td></tr>`;
+        renderUsersPager();
         return;
       }
       const roleLabels = { admin: t('role_admin'), employee: t('role_employee'), client: t('role_client') };
       const roleBadge  = { admin: 'badge-admin', employee: 'badge-employee', client: 'badge-client' };
 
-      tbody.innerHTML = allUsers.map(u => {
+      tbody.innerHTML = usersDirectoryRows.map(u => {
         const svcName = u.services
           ? (currentLang === 'pt' ? u.services.name_pt : u.services.name_en)
           : '—';
@@ -753,20 +841,20 @@
       const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
       if (error) { showToast(t('error_occurred'), 'error'); return; }
       showToast(t('status_updated'), 'success');
-      const u = allUsers.find(u => u.id === userId);
+      const u = usersDirectoryRows.find(u => u.id === userId);
       if (u) u.role = newRole;
     }
 
     function populateClientSelect() {
       const sel = document.getElementById('invClient');
-      const clients = allUsers.filter(u => u.role === 'client');
+      const clients = clientOptionsList || [];
       sel.innerHTML = `<option value="">${currentLang === 'pt' ? 'Selecione o cliente...' : 'Select client...'}</option>` +
         clients.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
     }
 
     function populateProgressClientSelect() {
       const sel = document.getElementById('progressClientSelect');
-      const clients = allUsers.filter(u => u.role === 'client');
+      const clients = clientOptionsList || [];
       sel.innerHTML = `<option value="">${currentLang === 'pt' ? 'Selecione o cliente...' : 'Select client...'}</option>` +
         clients.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
       if (selectedProgressClientId) sel.value = selectedProgressClientId;
@@ -794,8 +882,8 @@
       const updaterSel = document.getElementById('historyUpdaterFilter');
       if (!clientSel || !updaterSel) return;
 
-      const clients = allUsers.filter(u => u.role === 'client');
-      const staff = allUsers.filter(u => u.role === 'employee' || u.role === 'admin');
+      const clients = clientOptionsList || [];
+      const staff = staffOptionsList || [];
 
       clientSel.innerHTML = `<option value="">${currentLang === 'pt' ? 'Todos os clientes' : 'All clients'}</option>` +
         clients.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
@@ -823,8 +911,14 @@
       }
 
       panel.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
-      const client = allUsers.find(u => u.id === clientId);
-      const svcName = client?.services ? (currentLang === 'pt' ? client.services.name_pt : client.services.name_en) : '';
+      const { data: clientRow } = await supabase
+        .from('profiles')
+        .select('full_name, service_id, services(name_pt, name_en)')
+        .eq('id', clientId)
+        .maybeSingle();
+      const svcName = clientRow?.services
+        ? (currentLang === 'pt' ? clientRow.services.name_pt : clientRow.services.name_en)
+        : '';
 
       const { data: steps, error } = await supabase
         .from('client_checklist')
@@ -849,7 +943,7 @@
       }
       panel.innerHTML = `
         <div class="flex items-center justify-between" style="margin-bottom:6px">
-          <h3 class="card-title-lg">${client?.full_name || ''}</h3>
+          <h3 class="card-title-lg">${clientRow?.full_name || ''}</h3>
           <span class="client-service-badge">${svcName}</span>
         </div>
         <div style="margin-bottom:16px">
@@ -988,8 +1082,16 @@
     }
 
     async function sendStepWhatsApp(stepId, clientId, auto = false) {
-      const client = allUsers.find(u => u.id === clientId);
-      const phone = (client?.whatsapp || '').replace(/\D/g, '');
+      const { data: client } = await supabase
+        .from('profiles')
+        .select('full_name, whatsapp')
+        .eq('id', clientId)
+        .maybeSingle();
+      if (!client) {
+        showToast(t('error_occurred'), 'error');
+        return;
+      }
+      const phone = (client.whatsapp || '').replace(/\D/g, '');
       if (!phone) {
         showToast(currentLang === 'pt'
           ? 'Cliente sem WhatsApp cadastrado.'
@@ -1020,21 +1122,37 @@
 
       if (auto && stepData.status !== 'done') return;
 
+      const clientName = client?.full_name || '';
       const msg = currentLang === 'pt'
-        ? `Olá ${client.full_name}! 🎉\n\nParabéns, a etapa "${stepTitle}" foi concluída com sucesso.\nSeu processo está ${progressPct}% concluído.\n\nSeguimos com os próximos passos.`
-        : `Hello ${client.full_name}! 🎉\n\nGreat news: the step "${stepTitle}" has been completed successfully.\nYour process is now ${progressPct}% complete.\n\nWe will continue with the next steps.`;
+        ? `Olá ${clientName}! 🎉\n\nParabéns, a etapa "${stepTitle}" foi concluída com sucesso.\nSeu processo está ${progressPct}% concluído.\n\nSeguimos com os próximos passos.`
+        : `Hello ${clientName}! 🎉\n\nGreat news: the step "${stepTitle}" has been completed successfully.\nYour process is now ${progressPct}% complete.\n\nWe will continue with the next steps.`;
 
       window.open(waLink(phone, msg), '_blank');
     }
 
-    function exportUsersCSV() {
+    async function exportUsersCSV() {
       const header = ['Nome', 'Email', 'Perfil', 'Serviço', 'WhatsApp'];
-      const rows = allUsers.map(u => [
-        u.full_name, u.email || '', u.role,
-        u.services ? u.services.name_pt : '',
-        u.whatsapp || ''
-      ]);
-      const csv = [header, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+      const rows = [];
+      const pageSize = 500;
+      for (let from = 0; from < 500000; from += pageSize) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('full_name, role, whatsapp, services(name_pt)')
+          .order('full_name')
+          .range(from, from + pageSize - 1);
+        if (error || !data?.length) break;
+        data.forEach(u => {
+          rows.push([
+            u.full_name,
+            '',
+            u.role,
+            u.services ? u.services.name_pt : '',
+            u.whatsapp || ''
+          ]);
+        });
+        if (data.length < pageSize) break;
+      }
+      const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
@@ -1109,11 +1227,24 @@
     // ---- Reports ----
     async function renderReports() {
       const container = document.getElementById('reportsContent');
-      const clients = allUsers.filter(u => u.role === 'client');
-
       const byService = {};
       Object.values(SERVICES_DATA).forEach(s => { byService[s.id] = { name: s.name.pt, count: 0 }; });
-      clients.forEach(c => { if (c.service_id && byService[c.service_id]) byService[c.service_id].count++; });
+
+      let totalClients = 0;
+      const pageSize = 1000;
+      for (let from = 0; from < 500000; from += pageSize) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('service_id')
+          .eq('role', 'client')
+          .range(from, from + pageSize - 1);
+        if (error || !data?.length) break;
+        totalClients += data.length;
+        data.forEach(c => {
+          if (c.service_id && byService[c.service_id]) byService[c.service_id].count++;
+        });
+        if (data.length < pageSize) break;
+      }
 
       container.innerHTML = `
         <div class="stats-row" style="grid-template-columns:repeat(3,1fr)">
@@ -1125,8 +1256,8 @@
         </div>
         <p style="font-size:13px;color:var(--text-muted);margin-top:12px">
           ${currentLang === 'pt'
-            ? `Total de ${clients.length} clientes cadastrados.`
-            : `Total of ${clients.length} registered clients.`}
+            ? `Total de ${totalClients} clientes cadastrados.`
+            : `Total of ${totalClients} registered clients.`}
         </p>`;
     }
 
@@ -1164,8 +1295,9 @@
     window.toggleLang = function() {
       _origToggle();
       renderUsersTable();
+      renderUsersPager();
       loadInvoicesTable();
-      renderReports();
+      renderReports().catch(() => {});
       renderJotformLinks();
       populateProgressClientSelect();
       renderActiveClientList();

@@ -18,6 +18,26 @@ var supabase =
   globalThis.__bdSupabaseClient ||
   (globalThis.__bdSupabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY));
 
+/** Limite por arquivo em uploads (storage + UX). */
+var BD_MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+function bdFormatBytes(bytes) {
+  if (bytes == null || bytes < 0) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+/** Valida tamanho de cada arquivo antes do upload. */
+function bdValidateUploadFiles(files) {
+  var list = Array.from(files || []);
+  for (var i = 0; i < list.length; i++) {
+    var f = list[i];
+    if ((f.size || 0) > BD_MAX_UPLOAD_BYTES) return { ok: false, file: f.name };
+  }
+  return { ok: true };
+}
+
 // ====================================
 // SERVICES & CHECKLISTS (static data)
 // ====================================
@@ -143,6 +163,11 @@ var translations = {
     client_created: 'Cliente cadastrado com sucesso!',
     error_occurred: 'Ocorreu um erro. Tente novamente.',
     file_uploaded: 'Arquivo enviado com sucesso!',
+    file_too_large: 'Arquivo muito grande',
+    max_upload_hint: 'Tamanho máximo por arquivo: 20 MB.',
+    load_more_clients: 'Carregar mais clientes',
+    load_more_documents: 'Carregar mais documentos',
+    clients_search_hint: 'A busca filtra entre os clientes já carregados. Use «Carregar mais» para trazer mais.',
     copied: 'Mensagem copiada!',
     invoice_added: 'Fatura adicionada!',
     loading: 'Carregando...',
@@ -252,6 +277,11 @@ var translations = {
     client_created: 'Client registered successfully!',
     error_occurred: 'An error occurred. Please try again.',
     file_uploaded: 'File uploaded successfully!',
+    file_too_large: 'File too large',
+    max_upload_hint: 'Maximum file size: 20 MB.',
+    load_more_clients: 'Load more clients',
+    load_more_documents: 'Load more documents',
+    clients_search_hint: 'Search filters clients already loaded. Use «Load more» to fetch more.',
     copied: 'Message copied!',
     invoice_added: 'Invoice added!',
     loading: 'Loading...',

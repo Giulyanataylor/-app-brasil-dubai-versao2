@@ -27,10 +27,10 @@
 
     <!-- Tabs -->
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('checklist')" data-i18n="progress_tab">Progresso</button>
-      <button class="tab-btn" onclick="switchTab('invoice')"   data-i18n="invoice">Fatura</button>
-      <button class="tab-btn" onclick="switchTab('services')"  data-i18n="services">Serviços</button>
-      <button class="tab-btn" onclick="switchTab('documents')" data-i18n="documents">Documentos</button>
+      <button class="tab-btn active" onclick="switchTab('checklist', event)" data-i18n="progress_tab">Progresso</button>
+      <button class="tab-btn" onclick="switchTab('invoice', event)"   data-i18n="invoice">Fatura</button>
+      <button class="tab-btn" onclick="switchTab('services', event)"  data-i18n="services">Serviços</button>
+      <button class="tab-btn" onclick="switchTab('documents', event)" data-i18n="documents">Documentos</button>
     </div>
 
     <!-- Tab: Progress -->
@@ -84,8 +84,12 @@
             <input type="file" id="fileInput" style="display:none" onchange="uploadDocument(event)">
           </label>
         </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px" data-i18n="max_upload_hint"></p>
         <div id="documentsContainer">
           <div class="loading"><div class="spinner"></div></div>
+        </div>
+        <div id="documentsPager" style="margin-top:12px;text-align:center;display:none">
+          <button type="button" class="btn btn-outline btn-sm" id="loadMoreDocsBtn" onclick="loadMoreDocuments()" data-i18n="load_more_documents">Carregar mais documentos</button>
         </div>
       </div>
     </div>
@@ -99,6 +103,9 @@
   <script src="../js/auth.js"></script>
   <script>
     let profile = null;
+    const CLIENT_DOCS_PAGE = 15;
+    let clientDocsOffset = 0;
+    let clientDocsHasMore = false;
 
     // ---- Init ----
     (async () => {
@@ -261,22 +268,44 @@
     }
 
     // ---- Documents ----
-    async function loadDocuments() {
+    async function loadDocuments(reset) {
       const container = document.getElementById('documentsContainer');
+      const pager = document.getElementById('documentsPager');
+      const btn = document.getElementById('loadMoreDocsBtn');
+
+      if (reset !== false) {
+        clientDocsOffset = 0;
+        clientDocsHasMore = false;
+        container.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+      }
+
+      const from = clientDocsOffset;
+      const to = from + CLIENT_DOCS_PAGE - 1;
 
       const { data: docs, error } = await supabase
         .from('documents')
         .select('*')
         .eq('client_id', profile.id)
-        .order('uploaded_at', { ascending: false });
+        .order('uploaded_at', { ascending: false })
+        .range(from, to);
 
-      if (!docs || docs.length === 0) {
-        container.innerHTML = `<p class="empty-state"><span class="empty-icon">📂</span><br>
-          <span class="empty-text">${t('no_documents')}</span></p>`;
+      if (error) {
+        container.innerHTML = `<p class="empty-state"><span class="empty-text">${t('error_occurred')}</span></p>`;
+        if (pager) pager.style.display = 'none';
         return;
       }
 
-      container.innerHTML = docs.map(doc => `
+      clientDocsHasMore = (docs && docs.length === CLIENT_DOCS_PAGE);
+      clientDocsOffset += (docs?.length || 0);
+
+      if (reset !== false && (!docs || docs.length === 0)) {
+        container.innerHTML = `<p class="empty-state"><span class="empty-icon">📂</span><br>
+          <span class="empty-text">${t('no_documents')}</span></p>`;
+        if (pager) pager.style.display = 'none';
+        return;
+      }
+
+      const chunkHtml = (docs || []).map(doc => `
         <div class="doc-item">
           <div>
             <div class="doc-name">📄 ${doc.filename}</div>
@@ -286,11 +315,37 @@
             ⬇️ <span data-i18n="download">Baixar</span>
           </button>
         </div>`).join('');
+
+      if (reset !== false) container.innerHTML = chunkHtml;
+      else container.insertAdjacentHTML('beforeend', chunkHtml);
+
+      if (pager) {
+        if (clientDocsHasMore) {
+          pager.style.display = 'block';
+          if (btn) btn.textContent = t('load_more_documents');
+        } else {
+          pager.style.display = 'none';
+        }
+      }
+      applyTranslations();
+    }
+
+    function loadMoreDocuments() {
+      loadDocuments(false);
     }
 
     async function uploadDocument(event) {
       const file = event.target.files[0];
       if (!file) return;
+
+      const bad = bdValidateUploadFiles([file]);
+      if (!bad.ok) {
+        showToast(currentLang === 'pt'
+          ? `${t('file_too_large')}: "${bad.file}" (máx. ${bdFormatBytes(BD_MAX_UPLOAD_BYTES)}).`
+          : `${t('file_too_large')}: "${bad.file}" (max ${bdFormatBytes(BD_MAX_UPLOAD_BYTES)}).`, 'error');
+        event.target.value = '';
+        return;
+      }
 
       const path = `${profile.id}/${Date.now()}_${file.name}`;
       const { error: uploadErr } = await supabase.storage
@@ -309,7 +364,7 @@
 
       showToast(t('file_uploaded'), 'success');
       event.target.value = '';
-      loadDocuments();
+      loadDocuments(true);
     }
 
     async function downloadDoc(storagePath, filename) {
@@ -324,16 +379,18 @@
     }
 
     // ---- Tab switching ----
-    function switchTab(name) {
+    function switchTab(name, ev) {
+      const e = ev || window.event;
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.getElementById('tab-' + name).classList.add('active');
-      event.target.classList.add('active');
+      if (e && e.target && e.target.classList) e.target.classList.add('active');
 
       // Re-apply translations when switching
       applyTranslations();
       updateServiceLabel();
       updateWhatsApp();
+      if (name === 'documents') loadDocuments(true);
     }
 
     // Lang toggle re-renders
@@ -345,6 +402,7 @@
       loadChecklist();
       loadInvoice();
       renderServices();
+      loadDocuments(true);
     };
   </script>
 </body>
