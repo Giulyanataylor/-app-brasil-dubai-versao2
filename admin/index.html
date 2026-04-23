@@ -127,6 +127,22 @@
       background: #fff;
       font-size: 13px;
     }
+    .active-client-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0 14px;
+    }
+    .active-client-chip {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      color: var(--text);
+    }
     @media (max-width: 980px) {
       .dash-grid { grid-template-columns: 1fr; }
     }
@@ -293,6 +309,12 @@
     <div id="tab-progress" class="tab-panel">
       <div class="card">
         <div class="card-title">Progresso dos Clientes</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px">
+          Clientes com processo em andamento
+        </div>
+        <div id="activeClientList" class="active-client-list">
+          <span style="font-size:13px;color:var(--text-muted)">Nenhum cliente em andamento.</span>
+        </div>
         <div class="form-group">
           <label>Selecione o cliente</label>
           <select id="progressClientSelect" onchange="loadAdminClientProgress(this.value)">
@@ -453,6 +475,7 @@
       // Populate client selects
       populateClientSelect();
       populateProgressClientSelect();
+      renderActiveClientList();
       populateHistoryFilters();
       renderUsersTable();
       loadInvoicesTable();
@@ -534,8 +557,9 @@
     }
 
     function openFirstActiveClient() {
+      switchTab('progress');
+      renderActiveClientList();
       if (!dashboardActiveClients.length) return;
-      openClientProgress(dashboardActiveClients[0].id);
     }
 
     // ---- Tab switching ----
@@ -719,6 +743,23 @@
       sel.innerHTML = `<option value="">${currentLang === 'pt' ? 'Selecione o cliente...' : 'Select client...'}</option>` +
         clients.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
       if (selectedProgressClientId) sel.value = selectedProgressClientId;
+    }
+
+    function renderActiveClientList() {
+      const container = document.getElementById('activeClientList');
+      if (!container) return;
+      if (!dashboardActiveClients.length) {
+        container.innerHTML = `<span style="font-size:13px;color:var(--text-muted)">${currentLang === 'pt'
+          ? 'Nenhum cliente em andamento.'
+          : 'No clients in progress.'}</span>`;
+        return;
+      }
+
+      container.innerHTML = dashboardActiveClients.map(c => `
+        <button class="active-client-chip" onclick="openClientProgress('${c.id}', event)">
+          ${c.full_name}
+        </button>
+      `).join('');
     }
 
     function populateHistoryFilters() {
@@ -1100,6 +1141,7 @@
       renderReports();
       renderJotformLinks();
       populateProgressClientSelect();
+      renderActiveClientList();
       populateHistoryFilters();
       if (selectedProgressClientId) loadAdminClientProgress(selectedProgressClientId);
       loadRecentStepHistory();
