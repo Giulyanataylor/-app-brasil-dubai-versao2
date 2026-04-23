@@ -13,6 +13,14 @@
       align-items: start;
     }
     .client-panel { position: sticky; top: 84px; }
+    .client-section-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin: 12px 2px 8px;
+    }
     @media(max-width:768px) {
       .emp-layout { grid-template-columns: 1fr; }
       .client-panel { position: static; }
@@ -158,9 +166,34 @@
 
       if (error) { showToast(t('error_occurred'), 'error'); return; }
 
-      allClients = data || [];
+      const clients = data || [];
+      const clientIds = clients.map(c => c.id);
+
+      const statusMap = {};
+      if (clientIds.length) {
+        const { data: checklistRows } = await supabase
+          .from('client_checklist')
+          .select('client_id,status')
+          .in('client_id', clientIds);
+
+        (checklistRows || []).forEach(row => {
+          if (!statusMap[row.client_id]) statusMap[row.client_id] = [];
+          statusMap[row.client_id].push(row.status);
+        });
+      }
+
+      allClients = clients.map(c => {
+        const statuses = statusMap[c.id] || [];
+        const isCompleted = statuses.length > 0 && statuses.every(s => s === 'done');
+        return { ...c, process_state: isCompleted ? 'completed' : 'in_progress' };
+      });
+
+      const inProgressCount = allClients.filter(c => c.process_state === 'in_progress').length;
+      const completedCount = allClients.filter(c => c.process_state === 'completed').length;
       document.getElementById('clientCount').textContent =
-        `${allClients.length} ${currentLang === 'pt' ? 'clientes ativos' : 'active clients'}`;
+        currentLang === 'pt'
+          ? `${inProgressCount} em andamento • ${completedCount} concluídos`
+          : `${inProgressCount} in progress • ${completedCount} completed`;
 
       renderClientList(allClients);
     }
@@ -172,7 +205,10 @@
         return;
       }
 
-      container.innerHTML = clients.map(c => {
+      const inProgress = clients.filter(c => c.process_state === 'in_progress');
+      const completed = clients.filter(c => c.process_state === 'completed');
+
+      const renderRows = (list) => list.map(c => {
         const svcName = c.services
           ? (currentLang === 'pt' ? c.services.name_pt : c.services.name_en)
           : '—';
@@ -186,6 +222,18 @@
             <span style="color:var(--text-muted);font-size:18px">›</span>
           </div>`;
       }).join('');
+
+      container.innerHTML = `
+        <div class="client-section-title">${currentLang === 'pt' ? 'Clientes em andamento' : 'Clients in progress'}</div>
+        ${inProgress.length
+          ? renderRows(inProgress)
+          : `<p style="font-size:13px;color:var(--text-muted);margin:6px 2px 10px">${currentLang === 'pt' ? 'Nenhum cliente em andamento.' : 'No clients in progress.'}</p>`}
+
+        <div class="client-section-title">${currentLang === 'pt' ? 'Processos concluídos' : 'Completed processes'}</div>
+        ${completed.length
+          ? renderRows(completed)
+          : `<p style="font-size:13px;color:var(--text-muted);margin:6px 2px 10px">${currentLang === 'pt' ? 'Nenhum processo concluído.' : 'No completed processes.'}</p>`}
+      `;
     }
 
     function filterClients(query) {
