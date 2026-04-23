@@ -242,6 +242,14 @@
             <label data-i18n="client_password">Senha Inicial</label>
             <input type="text" id="newPassword" required placeholder="Mínimo 6 caracteres">
           </div>
+          <div class="form-group">
+            <label data-i18n="role_col">Perfil</label>
+            <select id="newRole" onchange="onNewRoleChange(this.value)">
+              <option value="client" selected>Cliente</option>
+              <option value="employee">Funcionário</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
           <div class="form-group" style="grid-column:1/-1">
             <label data-i18n="select_service">Serviço Contratado</label>
             <select id="newService" onchange="onServiceChange(this.value)">
@@ -577,9 +585,10 @@
 
     // ---- Service select → WA preview ----
     function onServiceChange(serviceId) {
+      const role = document.getElementById('newRole').value;
       const name  = document.getElementById('newName').value.trim();
       const phone = document.getElementById('newWhatsapp').value.trim();
-      if (!serviceId) { document.getElementById('waPreviewBlock').style.display = 'none'; return; }
+      if (role !== 'client' || !serviceId) { document.getElementById('waPreviewBlock').style.display = 'none'; return; }
 
       const svcSlug = getServiceSlugById(parseInt(serviceId));
       const svc = SERVICES_DATA[svcSlug];
@@ -604,6 +613,18 @@
       document.getElementById('waSendLink').href = waLink(waPhone, msg);
     }
 
+    function onNewRoleChange(role) {
+      const serviceWrap = document.getElementById('newService').closest('.form-group');
+      if (!serviceWrap) return;
+      if (role === 'client') {
+        serviceWrap.style.display = '';
+      } else {
+        document.getElementById('newService').value = '';
+        document.getElementById('waPreviewBlock').style.display = 'none';
+        serviceWrap.style.display = 'none';
+      }
+    }
+
     function copyWAMessage() {
       const text = document.getElementById('waPreviewText').textContent;
       navigator.clipboard.writeText(text).then(() => showToast(t('copied'), 'success'));
@@ -621,9 +642,11 @@
       const email    = document.getElementById('newEmail').value.trim();
       const password = document.getElementById('newPassword').value;
       const whatsapp = document.getElementById('newWhatsapp').value.trim();
+      const role     = document.getElementById('newRole').value;
       const serviceId = parseInt(document.getElementById('newService').value);
 
-      if (!name || !email || !password || !serviceId) {
+      const requiresService = role === 'client';
+      if (!name || !email || !password || (requiresService && !serviceId)) {
         errEl.textContent = currentLang === 'pt'
           ? 'Preencha todos os campos obrigatórios.'
           : 'Please fill in all required fields.';
@@ -654,28 +677,30 @@
       if (userId) {
         await supabase.from('profiles').upsert({
           id: userId, full_name: name,
-          whatsapp, role: 'client', service_id: serviceId
+          whatsapp, role, service_id: requiresService ? serviceId : null
         });
 
         // 3. Create checklist from templates
-        const { data: templates } = await supabase
-          .from('checklist_templates')
-          .select('id')
-          .eq('service_id', serviceId);
+        if (requiresService) {
+          const { data: templates } = await supabase
+            .from('checklist_templates')
+            .select('id')
+            .eq('service_id', serviceId);
 
-        if (templates && templates.length > 0) {
-          const rows = templates.map(tpl => ({
-            client_id: userId,
-            template_step_id: tpl.id,
-            status: 'pending'
-          }));
-          await supabase.from('client_checklist').insert(rows);
+          if (templates && templates.length > 0) {
+            const rows = templates.map(tpl => ({
+              client_id: userId,
+              template_step_id: tpl.id,
+              status: 'pending'
+            }));
+            await supabase.from('client_checklist').insert(rows);
+          }
         }
       }
 
       succEl.textContent = currentLang === 'pt'
-        ? `✅ Cliente ${name} cadastrado! Envie a mensagem gerada via WhatsApp.`
-        : `✅ Client ${name} registered! Send the generated message via WhatsApp.`;
+        ? `✅ Usuário ${name} cadastrado com sucesso!`
+        : `✅ User ${name} registered successfully!`;
       succEl.classList.add('show');
       btn.disabled = false;
       btn.innerHTML = `<span data-i18n="create_client">${t('create_client')}</span>`;
@@ -685,6 +710,8 @@
       ['newName','newEmail','newPassword','newWhatsapp'].forEach(id => {
         document.getElementById(id).value = '';
       });
+      document.getElementById('newRole').value = 'client';
+      onNewRoleChange('client');
       document.getElementById('newService').value = '';
       document.getElementById('waPreviewBlock').style.display = 'none';
 
