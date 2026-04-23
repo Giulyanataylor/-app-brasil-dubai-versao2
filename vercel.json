@@ -6,6 +6,7 @@
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
     { "source": "/register", "destination": "/register.html" },
+    { "source": "/reset-password", "destination": "/reset-password.html" },
     { "source": "/admin", "destination": "/admin/index.html" },
     { "source": "/employee", "destination": "/employee/index.html" },
     { "source": "/client", "destination": "/client/index.html" }
