@@ -842,10 +842,6 @@
       if (row) row.className = `checklist-item ${newStatus}`;
       showToast(t('status_updated'), 'success');
 
-      if (newStatus === 'done') {
-        sendStepWhatsApp(stepId, clientId, true);
-      }
-
       await loadAdminClientProgress(clientId);
       await loadRecentStepHistory();
     }
@@ -948,9 +944,11 @@
         .select('status')
         .eq('client_id', clientId);
       const progressPct = calcProgress(allSteps || []);
-      const stepTitle = currentLang === 'pt'
+      const rawStepTitle = currentLang === 'pt'
         ? stepData.checklist_templates?.title_pt
         : stepData.checklist_templates?.title_en;
+      const stepTitle = (rawStepTitle || '')
+        .replace(/jotform/ig, currentLang === 'pt' ? 'Formulario' : 'Form');
 
       if (auto && stepData.status !== 'done') return;
 
