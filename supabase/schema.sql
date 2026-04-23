@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS checklist_templates (
   step_order  INT NOT NULL,
   title_pt    TEXT NOT NULL,
   title_en    TEXT NOT NULL,
+  instructions_pt TEXT,
+  instructions_en TEXT,
   percentage  INT,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -51,6 +53,7 @@ CREATE TABLE IF NOT EXISTS client_checklist (
   template_step_id INT  NOT NULL REFERENCES checklist_templates(id) ON DELETE CASCADE,
   status           TEXT NOT NULL DEFAULT 'pending'
                    CHECK (status IN ('done', 'in_progress', 'pending')),
+  notes            TEXT,
   updated_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_by       UUID REFERENCES profiles(id),
   UNIQUE(client_id, template_step_id)
@@ -273,11 +276,37 @@ SELECT setval('services_id_seq', 3);
 
 -- SERVICE 1: FREEZONE
 INSERT INTO checklist_templates (service_id, step_order, title_pt, title_en) VALUES
-(1, 1, 'Formulário JotForm — Preencher dados iniciais',        'JotForm — Fill in initial information'),
+(1, 1, 'Formulario — Preencher dados iniciais',                'Form — Fill in initial information'),
 (1, 2, 'Abertura da Empresa — Processo junto ao governo',     'Company Registration — Government process'),
 (1, 3, 'Registro na Imigração — Regularização migratória',    'Immigration Registration — Migration process'),
-(1, 4, 'Corporate Tax — Registro tributário corporativo',     'Corporate Tax — Corporate tax registration')
+(1, 4, 'Corporate Tax — Registro tributário corporativo',     'Corporate Tax — Corporate tax registration'),
+(1, 5, 'Exame de Saúde',                                       'Medical Exam'),
+(1, 6, 'Biometria',                                            'Biometrics'),
+(1, 7, 'Impressao do ID',                                      'ID Printing'),
+(1, 8, 'ID entregue 🎉 Parabéns, processo concluído!',         'ID delivered 🎉 Congratulations, process completed!')
 ON CONFLICT DO NOTHING;
+
+-- If Freezone templates already exist in production, run this block once:
+-- UPDATE checklist_templates
+-- SET title_pt = 'Formulario — Preencher dados iniciais',
+--     title_en = 'Form — Fill in initial information'
+-- WHERE service_id = 1 AND step_order = 1;
+--
+-- INSERT INTO checklist_templates (service_id, step_order, title_pt, title_en)
+-- SELECT 1, 5, 'Exame de Saúde', 'Medical Exam'
+-- WHERE NOT EXISTS (SELECT 1 FROM checklist_templates WHERE service_id = 1 AND step_order = 5);
+--
+-- INSERT INTO checklist_templates (service_id, step_order, title_pt, title_en)
+-- SELECT 1, 6, 'Biometria', 'Biometrics'
+-- WHERE NOT EXISTS (SELECT 1 FROM checklist_templates WHERE service_id = 1 AND step_order = 6);
+--
+-- INSERT INTO checklist_templates (service_id, step_order, title_pt, title_en)
+-- SELECT 1, 7, 'Impressao do ID', 'ID Printing'
+-- WHERE NOT EXISTS (SELECT 1 FROM checklist_templates WHERE service_id = 1 AND step_order = 7);
+--
+-- INSERT INTO checklist_templates (service_id, step_order, title_pt, title_en)
+-- SELECT 1, 8, 'ID entregue 🎉 Parabéns, processo concluído!', 'ID delivered 🎉 Congratulations, process completed!'
+-- WHERE NOT EXISTS (SELECT 1 FROM checklist_templates WHERE service_id = 1 AND step_order = 8);
 
 -- SERVICE 2: VISTO DE INDEPENDENTE
 INSERT INTO checklist_templates (service_id, step_order, title_pt, title_en) VALUES
@@ -290,6 +319,44 @@ INSERT INTO checklist_templates (service_id, step_order, title_pt, title_en) VAL
 (2, 7, 'Biometria',                                           'Biometrics'),
 (2, 8, 'Entrega do Emirates ID',                              'Emirates ID Delivery')
 ON CONFLICT DO NOTHING;
+
+-- Manual detalhado do Visto Independente (fase por fase)
+UPDATE checklist_templates
+SET instructions_pt = CASE step_order
+  WHEN 1 THEN 'Fase 1 - Formulario. Enviar login e senha do sistema ao cliente. Ativar fase 1 quando estiver disponivel para o cliente. Enviar formulario e aguardar preenchimento. Revisar respostas, arquivar formulario e arquivos no Drive e no sistema.'
+  WHEN 2 THEN 'Fase 2 - Cancelar visto anterior. Verificar no formulario e no Drive se o cliente possui visto anterior ativo ou expirado. Se nao possuir, avancar para a proxima fase. Se possuir, solicitar cancelamento, aguardar comprovante e arquivar cancelamento na tarefa do cliente.'
+  WHEN 3 THEN 'Fase 3 - Autenticacao. Criar Certificado de Salario e Contrato de Trabalho usando os templates. Enviar para autenticacao com Gabriel (prazo medio 10 dias). Depois arquivar contrato autenticado no sistema e no Drive.'
+  WHEN 4 THEN 'Fase 4 - Entry Permit
+60% Dar inicio ao ENTRY PERMIT.
+61% ICP Smart Services: https://smartservices.icp.gov.ae/echannels/web/client/guest/index.html#/issueVisa/request/763/step1?administrativeRegionId=1&withException=false
+62% Pegar Unified Number no ICP Smart Services: https://smartservices.icp.gov.ae/echannels/web/client/default.html#/fileValidity
+63% Tirar print, pegar numero do protocolo com valor e anexar no Drive do cliente e na pasta de pagamentos.
+64% IBS One Central Dubai / Dubai World Trade Centre - 1st floor - Sheikh Zayed Rd - Trade Center Second - District - Dubai.
+65% Adicionar anexo extra marcando o selo MOFA com o Canva.
+66% Conferir diariamente ate sair o ENTRY PERMIT.
+Se for recusado, ir no Application Tracking, logar com o email do nomad e colocar no note o texto padrao:
+Please check "Additional Annex No. 1" and "Additional Annex No. 2," where I indicate the location of all the stamps in the contract. This problem persists, and it is crucial to verify that both contracts include all the necessary stamps at the end.
+68% Enviar o ENTRY PERMIT para Visa # Abu Dhabi Amer Almarkaz (WhatsApp) para Change Status (2 dias).
+Se o cliente sair do pais apos o Entry Permit, nao precisa Change Status (usar o Entry Permit como Change Status). Orientar cliente a passar no portao manual e enviar o carimbo do passaporte.
+70% Arquivar Change Status - servidor, Drive e avisar cliente (documento com carimbo).
+72% Arquivar Change Status nesta tarefa.'
+  WHEN 5 THEN 'Fase 5 - Exame Medico (3 dias). Assim que sair o Change Status, orientar cliente a realizar exame medico (Dubai, Abu Dhabi ou Ajman, sem agendamento, cliente paga taxa). Arquivar resultado fitness no sistema e no Drive. Seguro de saude pode iniciar em paralelo.'
+  WHEN 6 THEN 'Fase 6 - Seguro de Saude (4 dias)
+83% Assim que sair o medical, dar inicio ao seguro.
+86% Preencher PDF com informacoes do cliente e usar no sistema TOB e MAF.
+https://www.dubins.ae/medical-insurance
+89% Anexar PDF da apolice na tarefa e no Drive e avisar o cliente apenas o E-CARD.
+(se o cliente pedir a apolice, enviar a do Drive sem valor).'
+  WHEN 7 THEN 'Fase 7 - Biometria (5 dias). Confirmar seguro e exame medico concluidos. Verificar se cliente ja teve visto anterior. Se sim, biometria pode ja constar no sistema. Se nao, solicitar biometria no ICP Smart Services, arquivar autorizacao no Drive/tarefa e avisar cliente. Biometria geralmente em Abu Dhabi.'
+  WHEN 8 THEN 'Fase 8 - Entrega do ID (5 dias). Aguardar emissao e recebimento do Emirates ID. Preparar presente, agendar entrega e concluir processo. Se houver recusas anteriores, usar texto padrao de revisao de anexos e selos na reaplicacao.'
+  ELSE instructions_pt
+END
+WHERE service_id = 2;
+
+-- Execute uma vez em producao para adicionar colunas sem recriar tabela:
+-- ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS instructions_pt TEXT;
+-- ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS instructions_en TEXT;
+-- ALTER TABLE client_checklist ADD COLUMN IF NOT EXISTS notes TEXT;
 
 -- SERVICE 3: CNH EM DUBAI
 INSERT INTO checklist_templates (service_id, step_order, title_pt, title_en, percentage) VALUES

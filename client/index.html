@@ -27,21 +27,25 @@
 
     <!-- Tabs -->
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('checklist')" data-i18n="checklist">Checklist</button>
+      <button class="tab-btn active" onclick="switchTab('checklist')" data-i18n="progress_tab">Progresso</button>
       <button class="tab-btn" onclick="switchTab('invoice')"   data-i18n="invoice">Fatura</button>
       <button class="tab-btn" onclick="switchTab('services')"  data-i18n="services">Serviços</button>
       <button class="tab-btn" onclick="switchTab('documents')" data-i18n="documents">Documentos</button>
     </div>
 
-    <!-- Tab: Checklist -->
+    <!-- Tab: Progress -->
     <div id="tab-checklist" class="tab-panel active">
       <div class="card">
         <div class="flex items-center justify-between" style="margin-bottom:18px">
-          <div class="card-title" style="margin:0" data-i18n="checklist">Checklist</div>
+          <div class="card-title" style="margin:0" data-i18n="progress_tab">Progresso</div>
           <div id="progressBadge" style="font-size:13px;font-weight:700;color:var(--primary)"></div>
         </div>
         <div class="progress-wrap" style="margin-bottom:18px">
           <div class="progress-fill" id="progressFill" style="width:0%"></div>
+        </div>
+        <div class="flex items-center justify-between" style="margin-bottom:14px;font-size:13px;color:var(--muted)">
+          <div><strong data-i18n="start_date">Data inicio</strong>: <span id="processStartDate">-</span></div>
+          <div><strong data-i18n="end_date">Data final</strong>: <span id="processEndDate">-</span></div>
         </div>
         <div id="checklistContainer">
           <div class="loading"><div class="spinner"></div></div>
@@ -90,6 +94,7 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="../js/deploy-config.js"></script>
   <script src="../js/config.js"></script>
   <script src="../js/auth.js"></script>
   <script>
@@ -127,9 +132,11 @@
       btn.href = waLink(COMPANY_WHATSAPP, msg);
     }
 
-    // ---- Checklist ----
+    // ---- Progress ----
     async function loadChecklist() {
       const container = document.getElementById('checklistContainer');
+      const startEl = document.getElementById('processStartDate');
+      const endEl = document.getElementById('processEndDate');
 
       const { data: steps, error } = await supabase
         .from('client_checklist')
@@ -138,6 +145,8 @@
         .order('checklist_templates(step_order)');
 
       if (error || !steps || steps.length === 0) {
+        if (startEl) startEl.textContent = profile?.created_at ? formatDate(profile.created_at.split('T')[0]) : '-';
+        if (endEl) endEl.textContent = '-';
         container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div>
           <p class="empty-text">${currentLang === 'pt' ? 'Nenhuma etapa cadastrada ainda.' : 'No steps registered yet.'}</p></div>`;
         return;
@@ -146,6 +155,19 @@
       const pct = calcProgress(steps);
       document.getElementById('progressFill').style.width = pct + '%';
       document.getElementById('progressBadge').textContent = pct + '%';
+      if (startEl) startEl.textContent = profile?.created_at ? formatDate(profile.created_at.split('T')[0]) : '-';
+
+      const allDone = steps.every(s => s.status === 'done');
+      if (allDone) {
+        const lastUpdatedAt = steps
+          .map(s => s.updated_at)
+          .filter(Boolean)
+          .sort()
+          .pop();
+        endEl.textContent = lastUpdatedAt ? formatDate(lastUpdatedAt.split('T')[0]) : '-';
+      } else {
+        endEl.textContent = '-';
+      }
 
       container.innerHTML = steps.map((s, i) => {
         const tpl     = s.checklist_templates;

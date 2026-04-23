@@ -5,6 +5,132 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BrasilDubai — Painel Admin</title>
   <link rel="stylesheet" href="../css/styles.css">
+  <style>
+    .dash-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .dash-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 6px 20px rgba(16, 24, 40, 0.06);
+    }
+    .dash-card.clickable { cursor: pointer; }
+    .dash-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .dash-value {
+      font-size: 32px;
+      font-weight: 800;
+      line-height: 1.1;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .dash-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .process-visual {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+    .process-donut {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      background: conic-gradient(#f79009 0deg, #f79009 240deg, #e4e7ec 240deg, #e4e7ec 360deg);
+      position: relative;
+    }
+    .process-donut::after {
+      content: '';
+      position: absolute;
+      inset: 12px;
+      background: #fff;
+      border-radius: 50%;
+    }
+    .process-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .meta-value {
+      color: var(--text);
+      font-weight: 700;
+    }
+    .dash-bars {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      align-items: end;
+      margin-top: 12px;
+      height: 120px;
+    }
+    .bar-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .bar {
+      width: 100%;
+      max-width: 90px;
+      background: linear-gradient(180deg, #1f7a63 0%, #0f5a47 100%);
+      border-radius: 10px 10px 4px 4px;
+      min-height: 6px;
+    }
+    .bar-label { font-size: 12px; color: var(--text-muted); }
+    .bar-value { font-size: 12px; font-weight: 700; color: var(--text); }
+    .step-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .wa-step-btn {
+      border: 1px solid #b7ebc6;
+      background: #ecfdf3;
+      color: #067647;
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .step-meta {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .history-row {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+      font-size: 13px;
+    }
+    @media (max-width: 980px) {
+      .dash-grid { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body class="app-layout">
 
@@ -19,19 +145,51 @@
   </header>
 
   <main class="app-content">
-    <!-- Stats -->
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-number" id="statTotal">—</div>
-        <div class="stat-label" data-i18n="total_clients">Clientes</div>
+    <!-- Dashboard -->
+    <div class="dash-grid">
+      <div class="dash-card clickable" onclick="openFirstActiveClient()">
+        <div class="dash-title">Clientes em andamento</div>
+        <div class="dash-value" id="dashActiveCount">—</div>
+        <div class="dash-sub">Clique para abrir direto nos processos nao concluidos</div>
+        <div class="process-visual">
+          <div class="process-donut" id="processDonut"></div>
+          <div class="process-meta">
+            <div class="meta-row">
+              <span>Nao concluidos</span>
+              <span class="meta-value" id="dashNotDoneCount">—</span>
+            </div>
+            <div class="meta-row">
+              <span>Concluidos</span>
+              <span class="meta-value" id="dashDoneCount">—</span>
+            </div>
+            <div class="meta-row">
+              <span>Total clientes</span>
+              <span class="meta-value" id="dashTotalClients">—</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-number" id="statActive">—</div>
-        <div class="stat-label" data-i18n="active_processes">Em Andamento</div>
+
+      <div class="dash-card">
+        <div class="dash-title">Receita do mes (faturas pagas)</div>
+        <div class="dash-value" id="dashRevenueCurrent">—</div>
+        <div class="dash-sub" id="dashRevenueCompare">—</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-number" id="statInvoices">—</div>
-        <div class="stat-label" data-i18n="unpaid_label">Faturas em aberto</div>
+
+      <div class="dash-card">
+        <div class="dash-title">Comparativo mensal</div>
+        <div class="dash-bars">
+          <div class="bar-col">
+            <div class="bar" id="barPrev" style="height:6px"></div>
+            <div class="bar-label">Mes anterior</div>
+            <div class="bar-value" id="barPrevValue">—</div>
+          </div>
+          <div class="bar-col">
+            <div class="bar" id="barCurrent" style="height:6px"></div>
+            <div class="bar-label">Mes atual</div>
+            <div class="bar-value" id="barCurrentValue">—</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -39,6 +197,7 @@
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('add_client', event)" data-i18n="add_client">Novo Cliente</button>
       <button class="tab-btn" onclick="switchTab('users', event)"      data-i18n="manage_users">Usuários</button>
+      <button class="tab-btn" onclick="switchTab('progress', event)">Progresso Clientes</button>
       <button class="tab-btn" onclick="switchTab('invoices_tab', event)" data-i18n="add_invoice">Faturas</button>
       <button class="tab-btn" onclick="switchTab('reports', event)"    data-i18n="reports">Relatórios</button>
     </div>
@@ -130,6 +289,46 @@
       </div>
     </div>
 
+    <!-- ===== TAB: CLIENT PROGRESS ===== -->
+    <div id="tab-progress" class="tab-panel">
+      <div class="card">
+        <div class="card-title">Progresso dos Clientes</div>
+        <div class="form-group">
+          <label>Selecione o cliente</label>
+          <select id="progressClientSelect" onchange="loadAdminClientProgress(this.value)">
+            <option value="">Selecione o cliente...</option>
+          </select>
+        </div>
+        <div id="progressChecklistPanel" style="margin-top:12px">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <p class="empty-text">Selecione um cliente para atualizar etapas.</p>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="card-title" style="margin-bottom:10px">Histórico de execução</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group" style="margin:0">
+            <label>Filtrar por cliente</label>
+            <select id="historyClientFilter" onchange="onHistoryFilterChange()">
+              <option value="">Todos os clientes</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Filtrar por responsável</label>
+            <select id="historyUpdaterFilter" onchange="onHistoryFilterChange()">
+              <option value="">Toda a equipe</option>
+            </select>
+          </div>
+        </div>
+        <div id="progressHistoryPanel" class="history-list">
+          <div class="empty-state">
+            <p class="empty-text">Nenhuma atualização recente ainda.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== TAB: INVOICES ===== -->
     <div id="tab-invoices_tab" class="tab-panel">
       <!-- Add invoice form -->
@@ -202,9 +401,9 @@
         </div>
       </div>
 
-      <!-- JotForm links config -->
+      <!-- Form links config -->
       <div class="card">
-        <div class="card-title">⚙️ Links JotForm</div>
+        <div class="card-title">⚙️ Links Formulario</div>
         <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
           Configure os links dos formulários para cada serviço.
         </p>
@@ -218,12 +417,17 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="../js/deploy-config.js"></script>
   <script src="../js/config.js"></script>
   <script src="../js/auth.js"></script>
   <script>
     let adminProfile = null;
     let allUsers = [];
     let dbServices = [];
+    let selectedProgressClientId = null;
+    let dashboardActiveClients = [];
+    let historyClientFilter = '';
+    let historyUpdaterFilter = '';
 
     (async () => {
       adminProfile = await initPage(['admin']);
@@ -232,28 +436,106 @@
     })();
 
     async function loadDashboardData() {
-      const [usersRes, invoicesRes, servicesRes] = await Promise.all([
+      const [usersRes, invoicesRes, servicesRes, checklistRes] = await Promise.all([
         supabase.from('profiles').select('*, services(slug, name_pt, name_en)').order('full_name'),
-        supabase.from('invoices').select('is_paid'),
-        supabase.from('services').select('*').order('id')
+        supabase.from('invoices').select('is_paid, amount, currency, created_at'),
+        supabase.from('services').select('*').order('id'),
+        supabase.from('client_checklist').select('client_id, status')
       ]);
 
       allUsers   = usersRes.data  || [];
       dbServices = servicesRes.data || [];
       const invoices = invoicesRes.data || [];
+      const checklistRows = checklistRes.data || [];
 
-      // Stats
-      const clients = allUsers.filter(u => u.role === 'client');
-      document.getElementById('statTotal').textContent   = clients.length;
-      document.getElementById('statActive').textContent  = clients.length;
-      document.getElementById('statInvoices').textContent = invoices.filter(i => !i.is_paid).length;
+      renderDashboardCards(invoices, checklistRows);
 
       // Populate client selects
       populateClientSelect();
+      populateProgressClientSelect();
+      populateHistoryFilters();
       renderUsersTable();
       loadInvoicesTable();
       renderReports();
       renderJotformLinks();
+      loadRecentStepHistory();
+    }
+
+    function renderDashboardCards(invoices, checklistRows) {
+      const clients = allUsers.filter(u => u.role === 'client');
+      const byClient = {};
+      checklistRows.forEach(r => {
+        if (!byClient[r.client_id]) byClient[r.client_id] = [];
+        byClient[r.client_id].push(r.status);
+      });
+
+      dashboardActiveClients = clients.filter(c => {
+        const statuses = byClient[c.id] || [];
+        if (!statuses.length) return false;
+        return statuses.some(s => s !== 'done');
+      });
+      const doneClients = clients.filter(c => {
+        const statuses = byClient[c.id] || [];
+        if (!statuses.length) return false;
+        return statuses.every(s => s === 'done');
+      });
+
+      document.getElementById('dashActiveCount').textContent = String(dashboardActiveClients.length);
+      document.getElementById('dashNotDoneCount').textContent = String(dashboardActiveClients.length);
+      document.getElementById('dashDoneCount').textContent = String(doneClients.length);
+      document.getElementById('dashTotalClients').textContent = String(clients.length);
+
+      const donut = document.getElementById('processDonut');
+      const totalForChart = Math.max(clients.length, 1);
+      const notDonePct = (dashboardActiveClients.length / totalForChart) * 100;
+      const angle = Math.round((notDonePct / 100) * 360);
+      donut.style.background = `conic-gradient(#f79009 0deg, #f79009 ${angle}deg, #e4e7ec ${angle}deg, #e4e7ec 360deg)`;
+
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      const prevDate = new Date(currentYear, currentMonth - 1, 1);
+      const prevMonth = prevDate.getMonth();
+      const prevYear = prevDate.getFullYear();
+
+      const currentRevenue = sumPaidInvoicesForMonth(invoices, currentMonth, currentYear);
+      const prevRevenue = sumPaidInvoicesForMonth(invoices, prevMonth, prevYear);
+      const diff = currentRevenue - prevRevenue;
+      const trend = prevRevenue > 0 ? ((diff / prevRevenue) * 100) : (currentRevenue > 0 ? 100 : 0);
+      const trendLabel = diff >= 0 ? 'acima' : 'abaixo';
+
+      document.getElementById('dashRevenueCurrent').textContent = formatCurrency(currentRevenue, 'AED');
+      document.getElementById('dashRevenueCompare').textContent =
+        `${Math.abs(trend).toFixed(1)}% ${trendLabel} do mes anterior`;
+
+      document.getElementById('barCurrentValue').textContent = formatCurrency(currentRevenue, 'AED');
+      document.getElementById('barPrevValue').textContent = formatCurrency(prevRevenue, 'AED');
+
+      const max = Math.max(currentRevenue, prevRevenue, 1);
+      document.getElementById('barCurrent').style.height = `${Math.max(6, (currentRevenue / max) * 100)}px`;
+      document.getElementById('barPrev').style.height = `${Math.max(6, (prevRevenue / max) * 100)}px`;
+    }
+
+    function sumPaidInvoicesForMonth(invoices, month, year) {
+      return (invoices || []).reduce((sum, inv) => {
+        if (!inv.is_paid || !inv.created_at) return sum;
+        const d = new Date(inv.created_at);
+        if (d.getMonth() !== month || d.getFullYear() !== year) return sum;
+        return sum + (parseFloat(inv.amount) || 0);
+      }, 0);
+    }
+
+    function openClientProgress(clientId, event) {
+      if (event) event.stopPropagation();
+      switchTab('progress');
+      const sel = document.getElementById('progressClientSelect');
+      if (sel) sel.value = clientId;
+      loadAdminClientProgress(clientId);
+    }
+
+    function openFirstActiveClient() {
+      if (!dashboardActiveClients.length) return;
+      openClientProgress(dashboardActiveClients[0].id);
     }
 
     // ---- Tab switching ----
@@ -262,6 +544,10 @@
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.getElementById('tab-' + name).classList.add('active');
       if (e) e.target.classList.add('active');
+      if (!e) {
+        const tabBtn = document.querySelector(`.tab-btn[onclick*="switchTab('${name}'"]`);
+        if (tabBtn) tabBtn.classList.add('active');
+      }
       applyTranslations();
     }
 
@@ -274,7 +560,7 @@
       const svcSlug = getServiceSlugById(parseInt(serviceId));
       const svc = SERVICES_DATA[svcSlug];
       const dbSvc = dbServices.find(s => s.id === parseInt(serviceId));
-      const jotformLink = dbSvc?.jotform_link || '[link do formulário]';
+      const jotformLink = dbSvc?.jotform_link || '[link do formulario]';
       const svcName = svc ? svc.name.pt : '';
 
       const msg = `Olá ${name || '[Nome]'}! 👋\n\n` +
@@ -427,6 +713,254 @@
         clients.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
     }
 
+    function populateProgressClientSelect() {
+      const sel = document.getElementById('progressClientSelect');
+      const clients = allUsers.filter(u => u.role === 'client');
+      sel.innerHTML = `<option value="">${currentLang === 'pt' ? 'Selecione o cliente...' : 'Select client...'}</option>` +
+        clients.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
+      if (selectedProgressClientId) sel.value = selectedProgressClientId;
+    }
+
+    function populateHistoryFilters() {
+      const clientSel = document.getElementById('historyClientFilter');
+      const updaterSel = document.getElementById('historyUpdaterFilter');
+      if (!clientSel || !updaterSel) return;
+
+      const clients = allUsers.filter(u => u.role === 'client');
+      const staff = allUsers.filter(u => u.role === 'employee' || u.role === 'admin');
+
+      clientSel.innerHTML = `<option value="">${currentLang === 'pt' ? 'Todos os clientes' : 'All clients'}</option>` +
+        clients.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
+
+      updaterSel.innerHTML = `<option value="">${currentLang === 'pt' ? 'Toda a equipe' : 'All staff'}</option>` +
+        staff.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
+
+      if (historyClientFilter) clientSel.value = historyClientFilter;
+      if (historyUpdaterFilter) updaterSel.value = historyUpdaterFilter;
+    }
+
+    function onHistoryFilterChange() {
+      historyClientFilter = document.getElementById('historyClientFilter')?.value || '';
+      historyUpdaterFilter = document.getElementById('historyUpdaterFilter')?.value || '';
+      loadRecentStepHistory();
+    }
+
+    async function loadAdminClientProgress(clientId) {
+      selectedProgressClientId = clientId || null;
+      const panel = document.getElementById('progressChecklistPanel');
+      if (!clientId) {
+        panel.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div>
+          <p class="empty-text">${currentLang === 'pt' ? 'Selecione um cliente para atualizar etapas.' : 'Select a client to update steps.'}</p></div>`;
+        return;
+      }
+
+      panel.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+      const client = allUsers.find(u => u.id === clientId);
+      const svcName = client?.services ? (currentLang === 'pt' ? client.services.name_pt : client.services.name_en) : '';
+
+      const { data: steps, error } = await supabase
+        .from('client_checklist')
+        .select('*, checklist_templates(step_order, title_pt, title_en, percentage)')
+        .eq('client_id', clientId)
+        .order('checklist_templates(step_order)');
+
+      if (error) {
+        panel.innerHTML = `<p style="color:var(--danger)">${t('error_occurred')}</p>`;
+        return;
+      }
+
+      const pct = calcProgress(steps || []);
+      const updaterIds = [...new Set((steps || []).map(s => s.updated_by).filter(Boolean))];
+      const updaterMap = {};
+      if (updaterIds.length) {
+        const { data: updaters } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', updaterIds);
+        (updaters || []).forEach(u => { updaterMap[u.id] = u.full_name; });
+      }
+      panel.innerHTML = `
+        <div class="flex items-center justify-between" style="margin-bottom:6px">
+          <h3 class="card-title-lg">${client?.full_name || ''}</h3>
+          <span class="client-service-badge">${svcName}</span>
+        </div>
+        <div style="margin-bottom:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:6px">${pct}%</div>
+          <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="checklist">
+          ${!steps || !steps.length
+            ? `<p style="color:var(--text-muted)">${currentLang === 'pt' ? 'Nenhuma etapa encontrada.' : 'No steps found.'}</p>`
+            : steps.map(s => renderAdminStepRow(s, clientId, updaterMap)).join('')}
+        </div>
+      `;
+      applyTranslations();
+    }
+
+    function renderAdminStepRow(step, clientId, updaterMap = {}) {
+      const tpl = step.checklist_templates;
+      const title = currentLang === 'pt' ? tpl.title_pt : tpl.title_en;
+      const pctText = tpl.percentage != null ? ` (${tpl.percentage}%)` : '';
+      const updaterName = step.updated_by ? (updaterMap[step.updated_by] || 'Equipe') : null;
+      const updatedAtText = step.updated_at ? formatDateTime(step.updated_at) : null;
+      return `
+        <div class="checklist-item ${step.status}" id="admin-step-${step.id}">
+          <div class="step-bubble">${tpl.step_order}</div>
+          <div class="step-info">
+            <div class="step-title">${title}${pctText}</div>
+            <div class="step-meta">
+              ${updaterName
+                ? (currentLang === 'pt'
+                    ? `Atualizado por ${updaterName}${updatedAtText ? ` em ${updatedAtText}` : ''}`
+                    : `Updated by ${updaterName}${updatedAtText ? ` at ${updatedAtText}` : ''}`)
+                : (currentLang === 'pt' ? 'Ainda sem atualização registrada' : 'No update recorded yet')}
+            </div>
+          </div>
+          <div class="step-actions">
+            <select id="admin-status-${step.id}" class="status-select" onchange="updateAdminStepStatus('${step.id}', this.value, '${clientId}')">
+              <option value="pending" ${step.status === 'pending' ? 'selected' : ''}>${t('status_pending')}</option>
+              <option value="in_progress" ${step.status === 'in_progress' ? 'selected' : ''}>${t('status_in_progress')}</option>
+              <option value="done" ${step.status === 'done' ? 'selected' : ''}>${t('status_done')}</option>
+            </select>
+            <button class="wa-step-btn" onclick="sendStepWhatsApp('${step.id}', '${clientId}')">💬 WhatsApp</button>
+          </div>
+        </div>`;
+    }
+
+    async function updateAdminStepStatus(stepId, newStatus, clientId) {
+      const { error } = await supabase
+        .from('client_checklist')
+        .update({ status: newStatus, updated_at: new Date().toISOString(), updated_by: adminProfile.id })
+        .eq('id', stepId);
+
+      if (error) {
+        showToast(t('error_occurred'), 'error');
+        return;
+      }
+
+      const row = document.getElementById('admin-step-' + stepId);
+      if (row) row.className = `checklist-item ${newStatus}`;
+      showToast(t('status_updated'), 'success');
+
+      if (newStatus === 'done') {
+        sendStepWhatsApp(stepId, clientId, true);
+      }
+
+      await loadAdminClientProgress(clientId);
+      await loadRecentStepHistory();
+    }
+
+    async function loadRecentStepHistory() {
+      const panel = document.getElementById('progressHistoryPanel');
+      if (!panel) return;
+
+      const { data: rows, error } = await supabase
+        .from('client_checklist')
+        .select('id, client_id, template_step_id, status, updated_at, updated_by')
+        .not('updated_at', 'is', null)
+        .order('updated_at', { ascending: false })
+        .limit(12);
+
+      if (error || !rows || !rows.length) {
+        panel.innerHTML = `<div class="empty-state"><p class="empty-text">${currentLang === 'pt'
+          ? 'Nenhuma atualização recente ainda.'
+          : 'No recent updates yet.'}</p></div>`;
+        return;
+      }
+
+      const filteredRows = rows.filter(r => {
+        if (historyClientFilter && r.client_id !== historyClientFilter) return false;
+        if (historyUpdaterFilter && r.updated_by !== historyUpdaterFilter) return false;
+        return true;
+      });
+
+      if (!filteredRows.length) {
+        panel.innerHTML = `<div class="empty-state"><p class="empty-text">${currentLang === 'pt'
+          ? 'Nenhum registro encontrado para os filtros selecionados.'
+          : 'No records found for selected filters.'}</p></div>`;
+        return;
+      }
+
+      const clientIds = [...new Set(filteredRows.map(r => r.client_id).filter(Boolean))];
+      const updaterIds = [...new Set(filteredRows.map(r => r.updated_by).filter(Boolean))];
+      const templateIds = [...new Set(filteredRows.map(r => r.template_step_id).filter(Boolean))];
+
+      const [clientsRes, updatersRes, templatesRes] = await Promise.all([
+        supabase.from('profiles').select('id, full_name').in('id', clientIds),
+        updaterIds.length ? supabase.from('profiles').select('id, full_name').in('id', updaterIds) : Promise.resolve({ data: [] }),
+        supabase.from('checklist_templates').select('id, title_pt, title_en, step_order').in('id', templateIds)
+      ]);
+
+      const clientMap = {};
+      const updaterMap = {};
+      const templateMap = {};
+      (clientsRes.data || []).forEach(c => { clientMap[c.id] = c.full_name; });
+      (updatersRes.data || []).forEach(u => { updaterMap[u.id] = u.full_name; });
+      (templatesRes.data || []).forEach(tpl => { templateMap[tpl.id] = tpl; });
+
+      const statusLabel = {
+        pending: t('status_pending'),
+        in_progress: t('status_in_progress'),
+        done: t('status_done')
+      };
+
+      panel.innerHTML = filteredRows.map(r => {
+        const clientName = clientMap[r.client_id] || 'Cliente';
+        const updaterName = updaterMap[r.updated_by] || 'Equipe';
+        const tpl = templateMap[r.template_step_id];
+        const stepTitle = tpl ? (currentLang === 'pt' ? tpl.title_pt : tpl.title_en) : 'Etapa';
+        const stepOrder = tpl?.step_order ? `#${tpl.step_order}` : '#';
+        return `
+          <div class="history-row">
+            <strong>${clientName}</strong> · ${stepOrder} ${stepTitle}<br>
+            <span style="color:var(--text-muted)">
+              ${currentLang === 'pt'
+                ? `Status: ${statusLabel[r.status] || r.status} · por ${updaterName} · ${formatDateTime(r.updated_at)}`
+                : `Status: ${statusLabel[r.status] || r.status} · by ${updaterName} · ${formatDateTime(r.updated_at)}`}
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function sendStepWhatsApp(stepId, clientId, auto = false) {
+      const client = allUsers.find(u => u.id === clientId);
+      const phone = (client?.whatsapp || '').replace(/\D/g, '');
+      if (!phone) {
+        showToast(currentLang === 'pt'
+          ? 'Cliente sem WhatsApp cadastrado.'
+          : 'Client has no WhatsApp number.', 'error');
+        return;
+      }
+
+      const { data: stepData, error: stepErr } = await supabase
+        .from('client_checklist')
+        .select('status, checklist_templates(title_pt, title_en)')
+        .eq('id', stepId)
+        .single();
+      if (stepErr || !stepData) {
+        showToast(t('error_occurred'), 'error');
+        return;
+      }
+
+      const { data: allSteps } = await supabase
+        .from('client_checklist')
+        .select('status')
+        .eq('client_id', clientId);
+      const progressPct = calcProgress(allSteps || []);
+      const stepTitle = currentLang === 'pt'
+        ? stepData.checklist_templates?.title_pt
+        : stepData.checklist_templates?.title_en;
+
+      if (auto && stepData.status !== 'done') return;
+
+      const msg = currentLang === 'pt'
+        ? `Olá ${client.full_name}! 🎉\n\nParabéns, a etapa "${stepTitle}" foi concluída com sucesso.\nSeu processo está ${progressPct}% concluído.\n\nSeguimos com os próximos passos.`
+        : `Hello ${client.full_name}! 🎉\n\nGreat news: the step "${stepTitle}" has been completed successfully.\nYour process is now ${progressPct}% complete.\n\nWe will continue with the next steps.`;
+
+      window.open(waLink(phone, msg), '_blank');
+    }
+
     function exportUsersCSV() {
       const header = ['Nome', 'Email', 'Perfil', 'Serviço', 'WhatsApp'];
       const rows = allUsers.map(u => [
@@ -530,7 +1064,7 @@
         </p>`;
     }
 
-    // ---- JotForm links ----
+    // ---- Form links ----
     async function renderJotformLinks() {
       const container = document.getElementById('jotformLinks');
       if (!dbServices.length) { container.innerHTML = '<p style="color:var(--text-muted)">Serviços não encontrados.</p>'; return; }
@@ -543,7 +1077,7 @@
             <label>${name}</label>
             <div style="display:flex;gap:8px">
               <input type="text" id="jf_${svc.id}" value="${svc.jotform_link || ''}"
-                     placeholder="https://form.jotform.com/...">
+                     placeholder="https://formulario.exemplo.com/...">
               <button class="btn btn-outline btn-sm" style="white-space:nowrap"
                       onclick="saveJotform(${svc.id})">💾 Salvar</button>
             </div>
@@ -567,6 +1101,10 @@
       loadInvoicesTable();
       renderReports();
       renderJotformLinks();
+      populateProgressClientSelect();
+      populateHistoryFilters();
+      if (selectedProgressClientId) loadAdminClientProgress(selectedProgressClientId);
+      loadRecentStepHistory();
     };
   </script>
 </body>

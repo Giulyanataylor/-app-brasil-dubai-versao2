@@ -1,0 +1,9 @@
+{
+  "name": "app-brasil-dubai",
+  "private": true,
+  "version": "1.0.0",
+  "description": "BrasilDubai client portal",
+  "scripts": {
+    "build": "node scripts/generate-deploy-config.mjs"
+  }
+}

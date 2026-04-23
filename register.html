@@ -56,15 +56,20 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/deploy-config.js"></script>
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script>
     (async () => {
-      applyTranslations();
-      const user = await getCurrentUser();
-      if (user) {
-        const profile = await getCurrentProfile();
-        if (profile) redirectToDashboard(profile.role);
+      try {
+        if (typeof applyTranslations === 'function') applyTranslations();
+        const user = await getCurrentUser();
+        if (user) {
+          const profile = await getCurrentProfile();
+          if (profile) redirectToDashboard(profile.role);
+        }
+      } catch (err) {
+        console.error('register init error:', err);
       }
     })();
 
@@ -90,33 +95,40 @@
       }
 
       btn.disabled = true;
-      btn.innerHTML = `<span>${t('registering')}</span>`;
+      btn.innerHTML = `<span>${typeof t === 'function' ? t('registering') : 'Criando conta...'}</span>`;
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName, whatsapp } }
-      });
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: fullName, whatsapp } }
+        });
 
-      if (error) {
-        errEl.textContent = error.message;
+        if (error) {
+          errEl.textContent = error.message;
+          errEl.classList.add('show');
+          return;
+        }
+
+        // If email confirmation is disabled, user is auto-logged in
+        if (data.session) {
+          const profile = await getCurrentProfile();
+          redirectToDashboard(profile?.role || 'client');
+        } else {
+          succEl.textContent = currentLang === 'pt'
+            ? '✅ Conta criada! Verifique seu email para confirmar o cadastro.'
+            : '✅ Account created! Check your email to confirm your registration.';
+          succEl.classList.add('show');
+        }
+      } catch (err) {
+        errEl.textContent = currentLang === 'pt'
+          ? 'Falha ao criar conta. Tente novamente.'
+          : 'Failed to create account. Please try again.';
         errEl.classList.add('show');
+        console.error('register error:', err);
+      } finally {
         btn.disabled = false;
-        btn.innerHTML = `<span data-i18n="register_link">${t('register_link')}</span>`;
-        return;
-      }
-
-      // If email confirmation is disabled, user is auto-logged in
-      if (data.session) {
-        const profile = await getCurrentProfile();
-        redirectToDashboard(profile?.role || 'client');
-      } else {
-        succEl.textContent = currentLang === 'pt'
-          ? '✅ Conta criada! Verifique seu email para confirmar o cadastro.'
-          : '✅ Account created! Check your email to confirm your registration.';
-        succEl.classList.add('show');
-        btn.disabled = false;
-        btn.innerHTML = `<span data-i18n="register_link">${t('register_link')}</span>`;
+        btn.innerHTML = `<span data-i18n="register_link">${typeof t === 'function' ? t('register_link') : 'Criar conta'}</span>`;
       }
     }
   </script>

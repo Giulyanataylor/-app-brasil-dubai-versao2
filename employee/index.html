@@ -17,6 +17,58 @@
       .emp-layout { grid-template-columns: 1fr; }
       .client-panel { position: static; }
     }
+    .step-manual-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-right: 8px;
+    }
+    .manual-box {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fcfcfd;
+      padding: 10px;
+      font-size: 13px;
+      color: var(--text);
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    .manual-box.hidden { display: none; }
+    .step-note-wrap {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .step-note-input {
+      flex: 1;
+      min-height: 64px;
+      resize: vertical;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text);
+      background: #fff;
+    }
+    .step-note-save {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body class="app-layout">
@@ -69,8 +121,8 @@
     <div class="modal">
       <h2 class="modal-title">📎 Enviar Documento</h2>
       <div class="form-group">
-        <label>Selecionar arquivo</label>
-        <input type="file" id="modalFileInput" style="padding:8px">
+        <label>Selecionar arquivo(s)</label>
+        <input type="file" id="modalFileInput" multiple style="padding:8px">
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeUploadModal()" data-i18n="cancel">Cancelar</button>
@@ -82,6 +134,7 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="../js/deploy-config.js"></script>
   <script src="../js/config.js"></script>
   <script src="../js/auth.js"></script>
   <script>
@@ -163,7 +216,7 @@
 
       const { data: steps, error } = await supabase
         .from('client_checklist')
-        .select('*, checklist_templates(step_order, title_pt, title_en, percentage)')
+        .select('*, checklist_templates(step_order, title_pt, title_en, instructions_pt, percentage)')
         .eq('client_id', clientId)
         .order('checklist_templates(step_order)');
 
@@ -228,18 +281,80 @@
       const tpl = s.checklist_templates;
       const title = currentLang === 'pt' ? tpl.title_pt : tpl.title_en;
       const pctText = tpl.percentage != null ? ` (${tpl.percentage}%)` : '';
+      const manual = (tpl.instructions_pt || '').trim();
+      const manualHtml = manual ? formatManualHtml(manual) : '';
       return `
         <div class="checklist-item ${s.status}" id="step-${s.id}">
           <div class="step-bubble">${tpl.step_order}</div>
           <div class="step-info">
             <div class="step-title">${title}${pctText}</div>
+            ${manual ? `<div id="manual-${s.id}" class="manual-box hidden">${manualHtml}</div>` : ''}
+            <div class="step-note-wrap">
+              <textarea
+                id="note-${s.id}"
+                class="step-note-input"
+                placeholder="${currentLang === 'pt' ? 'Escreva uma observação desta etapa...' : 'Write a note for this step...'}"
+              >${s.notes || ''}</textarea>
+              <button class="step-note-save" onclick="saveStepNote('${s.id}')">
+                ${currentLang === 'pt' ? 'Salvar obs.' : 'Save note'}
+              </button>
+            </div>
           </div>
-          <select class="status-select" onchange="updateStepStatus('${s.id}', this.value, '${clientId}')">
-            <option value="pending"     ${s.status === 'pending'     ? 'selected' : ''}>${t('status_pending')}</option>
-            <option value="in_progress" ${s.status === 'in_progress' ? 'selected' : ''}>${t('status_in_progress')}</option>
-            <option value="done"        ${s.status === 'done'        ? 'selected' : ''}>${t('status_done')}</option>
-          </select>
+          <div style="display:flex;align-items:center">
+            ${manual ? `<button class="step-manual-btn" onclick="toggleManual('${s.id}')">${currentLang === 'pt' ? 'Ver manual' : 'View manual'}</button>` : ''}
+            <select class="status-select" onchange="updateStepStatus('${s.id}', this.value, '${clientId}')">
+              <option value="pending"     ${s.status === 'pending'     ? 'selected' : ''}>${t('status_pending')}</option>
+              <option value="in_progress" ${s.status === 'in_progress' ? 'selected' : ''}>${t('status_in_progress')}</option>
+              <option value="done"        ${s.status === 'done'        ? 'selected' : ''}>${t('status_done')}</option>
+            </select>
+          </div>
         </div>`;
+    }
+
+    function toggleManual(stepId) {
+      const el = document.getElementById('manual-' + stepId);
+      if (!el) return;
+      el.classList.toggle('hidden');
+    }
+
+    function escapeHtml(str) {
+      return (str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatManualHtml(text) {
+      const escaped = escapeHtml(text);
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const withLinks = escaped.replace(urlRegex, (url) =>
+        `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+      );
+      return withLinks.replace(/\n/g, '<br>');
+    }
+
+    async function saveStepNote(stepId) {
+      const textarea = document.getElementById('note-' + stepId);
+      if (!textarea) return;
+      const note = textarea.value.trim();
+
+      const { error } = await supabase
+        .from('client_checklist')
+        .update({
+          notes: note || null,
+          updated_at: new Date().toISOString(),
+          updated_by: empProfile.id
+        })
+        .eq('id', stepId);
+
+      if (error) {
+        showToast(t('error_occurred'), 'error');
+        return;
+      }
+
+      showToast(currentLang === 'pt' ? 'Observação salva!' : 'Note saved!', 'success');
     }
 
     // ---- Update step status ----
@@ -285,21 +400,26 @@
 
     async function confirmUpload() {
       const fileInput = document.getElementById('modalFileInput');
-      const file = fileInput.files[0];
-      if (!file || !uploadTargetClientId) return;
+      const files = Array.from(fileInput.files || []);
+      if (!files.length || !uploadTargetClientId) return;
 
-      const path = `${uploadTargetClientId}/${Date.now()}_${file.name}`;
-      const { error: upErr } = await supabase.storage.from('documents').upload(path, file);
-      if (upErr) { showToast(t('error_occurred'), 'error'); return; }
+      for (const file of files) {
+        const path = `${uploadTargetClientId}/${Date.now()}_${file.name}`;
+        const { error: upErr } = await supabase.storage.from('documents').upload(path, file);
+        if (upErr) { showToast(t('error_occurred'), 'error'); return; }
 
-      await supabase.from('documents').insert({
-        client_id: uploadTargetClientId,
-        filename: file.name,
-        storage_path: path,
-        uploaded_by: empProfile.id
-      });
+        const { error: dbErr } = await supabase.from('documents').insert({
+          client_id: uploadTargetClientId,
+          filename: file.name,
+          storage_path: path,
+          uploaded_by: empProfile.id
+        });
+        if (dbErr) { showToast(t('error_occurred'), 'error'); return; }
+      }
 
-      showToast(t('file_uploaded'), 'success');
+      showToast(files.length > 1
+        ? (currentLang === 'pt' ? 'Arquivos enviados com sucesso!' : 'Files uploaded successfully!')
+        : t('file_uploaded'), 'success');
       closeUploadModal();
       loadClientChecklist(uploadTargetClientId);
     }
